@@ -53,18 +53,30 @@ Déploiement prévu : **https://wazzzxpense.walautao.fr** sur un VPS IONOS.
 
 ## Installation sur le VPS IONOS
 
-Prérequis : Docker + Docker Compose sur le VPS, et un enregistrement DNS **A** `wazzzxpense.walautao.fr` → IP du
-VPS (dans l'espace IONOS : *Domaines & SSL › walautao.fr › DNS*). Ports 80 et 443 ouverts dans le pare-feu IONOS.
+Prérequis : Docker sur le VPS, et un enregistrement DNS **A** `wazzzxpense.walautao.fr` → IP du VPS (espace
+IONOS : *Domaines & SSL › walautao.fr › DNS*).
 
 ```bash
-# sur le VPS
 sudo mkdir -p /opt/wazzzxpense && sudo chown $USER /opt/wazzzxpense
-git clone https://github.com/wdemirdjian-14/Jemsly.git /opt/wazzzxpense
+git clone -b claude/determined-ptolemy-gsbolc https://github.com/wdemirdjian-14/Jemsly.git /opt/wazzzxpense
 cd /opt/wazzzxpense
-cp .env.example .env
-nano .env                      # APP_PASSWORD (long !), SECRET_KEY (openssl rand -hex 32), ANTHROPIC_API_KEY
-./scripts/deploy.sh            # construit et lance app + Caddy (certificat HTTPS automatique)
+cp .env.example .env && nano .env   # APP_PASSWORD (long !), ANTHROPIC_API_KEY (facultatif)
+./scripts/deploy.sh                 # l'app écoute sur 127.0.0.1:8765
 ```
+
+### Avec le nginx déjà installé sur le VPS (cas par défaut)
+
+```bash
+sudo cp deploy/nginx.conf.example /etc/nginx/sites-available/wazzzxpense
+sudo ln -s /etc/nginx/sites-available/wazzzxpense /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d wazzzxpense.walautao.fr
+```
+
+### Sans serveur web sur le VPS
+
+Ajoutez `USE_CADDY=1` dans `.env` puis relancez `./scripts/deploy.sh` : Caddy prend les ports 80/443 et gère
+le certificat HTTPS tout seul.
 
 Ouvrez https://wazzzxpense.walautao.fr, connectez-vous, puis sur le téléphone : *Partager › Sur l'écran d'accueil*
 (iPhone) ou *⋮ › Installer l'application* (Android).
@@ -75,15 +87,10 @@ Ouvrez https://wazzzxpense.walautao.fr, connectez-vous, puis sur le téléphone 
 
 ```bash
 crontab -e
-15 3 * * * /opt/wazzzxpense/scripts/backup.sh >> /var/log/wzx-backup.log 2>&1
+15 3 * * * /opt/wazzzxpense/scripts/backup.sh >> $HOME/wzx-backup.log 2>&1
 ```
 
-Les archives vont dans `backups/` (30 jours). Copiez-les régulièrement hors du VPS (ex. `rclone`, ou téléchargement
-du ZIP depuis l'app).
-
-**Un reverse proxy existe déjà sur le VPS ?** (nginx, Plesk…) Supprimez le service `caddy` de
-`docker-compose.yml`, remplacez `expose` par `ports: ["127.0.0.1:8000:8000"]` dans le service `app`, et utilisez
-`deploy/nginx.conf.example` + `certbot --nginx`.
+Les archives vont dans `backups/` (30 jours). Copiez-les régulièrement hors du VPS.
 
 ## Premiers réglages conseillés
 

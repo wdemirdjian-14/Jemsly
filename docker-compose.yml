@@ -1,6 +1,6 @@
-# Déploiement : app + Caddy (HTTPS automatique Let's Encrypt).
-# Si votre VPS a déjà un reverse proxy (nginx…), supprimez le service caddy et
-# exposez l'app avec   ports: ["127.0.0.1:8000:8000"]   (voir README).
+# Par défaut : l'app écoute seulement en local (127.0.0.1:${APP_PORT}) et un nginx
+# déjà présent sur le VPS la sert en HTTPS (voir deploy/nginx.conf.example).
+# Sans serveur web existant :  docker compose --profile caddy up -d   (HTTPS auto via Caddy)
 services:
   app:
     build: .
@@ -10,11 +10,12 @@ services:
       COOKIE_SECURE: "1"
     volumes:
       - ./data:/data
-    expose:
-      - "8000"
+    ports:
+      - "127.0.0.1:${APP_PORT:-8765}:8000"
 
   caddy:
     image: caddy:2.10
+    profiles: ["caddy"]
     restart: unless-stopped
     ports:
       - "80:80"
