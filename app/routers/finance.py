@@ -7,11 +7,11 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..models import (
-    Attachment, InstallmentItem, InstallmentPlan, Insurance, Loan, Recurrence, Transaction,
+    THEMES, Attachment, InstallmentItem, InstallmentPlan, Insurance, Loan, Recurrence, Transaction,
 )
 from ..services import (
-    account_balance, apply_auto, build_installments, link_installments, loan_status, pending_total, provisions,
-    upcoming,
+    VIEWS, account_balance, apply_auto, build_installments, fixed_charges, fixed_items, link_installments,
+    loan_status, pending_total, provisions, theme_of, upcoming,
 )
 from ..templating import redirect, render
 from ..utils import label_contains
@@ -289,3 +289,99 @@ async def recurrence_save(request: Request, rid: int | None = None, db: Session 
     n = _relink(db, rec.match_pattern, "recurrence_id", rec.id)
     db.commit()
     return redirect(request, "/recurrences", f"Récurrence enregistrée ({n} opération(s) rattachée(s)).")
+
+
+# ---------------------------------------------------------------- charges fixes (vue modifiable)
+
+FIXED_MODELS = {"loan": Loan, "insurance": Insurance, "recurrence": Recurrence, "installment": InstallmentPlan}
+
+
+@router.get("/fixed")
+def fixed_view(request: Request, db: Session = Depends(get_db)):
+    view = request.query_params.get("view", "theme")
+    return render(request, db, "fixed.html", fixed=fixed_charges(db, view), views=VIEWS, themes=THEMES,
+                  **lookups(db))
+
+
+@router.post("/fixed/new")
+async def fixed_new(request: Request, db: Session = Depends(get_db)):
+    """Ajout rapide d'une charge (ou d'un revenu) fixe."""
+    f = await request.form()
+    cents = fcents(f.get("amount"))
+    if not cents:
+        return redirect(request, "/fixed", "Montant invalide.")
+    rec = Recurrence(label=f.get("label", "").strip() or "Charge fixe",
+                     amount_cents=abs(cents) if f.get("direction") == "in" else -abs(cents),
+                     frequency=f.get("frequency", "mensuel"), next_date=fdate(f.get("next_date"), date.today()),
+                     theme=f.get("theme", "").strip(), account_id=fint(f.get("account_id")),
+                     category_id=fint(f.get("category_id")), person_id=fint(f.get("person_id")),
+                     match_pattern=f.get("match_pattern", "").strip(), is_fixed=True)
+    db.add(rec)
+    db.flush()
+    _relink(db, rec.match_pattern, "recurrence_id", rec.id)
+    db.commit()
+    return redirect(request, f"/fixed?view={f.get('view', 'theme')}", f"« {rec.label} » ajouté aux charges fixes.")
+
+
+@router.get("/fixed/{kind}/{oid}")
+def fixed_item_form(kind: str, oid: int, request: Request, db: Session = Depends(get_db)):
+    model = FIXED_MODELS.get(kind) or _404()
+    obj = db.get(model, oid) or _404()
+    item = next((i for lst in fixed_items(db) for i in lst if i["kind"] == kind and i["id"] == oid), None)
+    return render(request, db, "fixed_item.html", kind=kind, obj=obj, item=item, themes=THEMES,
+                  theme=theme_of(kind, obj), **lookups(db))
+
+
+@router.post("/fixed/{kind}/{oid}")
+async def fixed_item_save(kind: str, oid: int, request: Request, db: Session = Depends(get_db)):
+    model = FIXED_MODELS.get(kind) or _404()
+    obj = db.get(model, oid) or _404()
+    f = await request.form()
+    action = f.get("action", "save")
+    back = f"/fixed?view={f.get('view', 'theme')}"
+    if action == "exclude":
+        if kind == "installment":
+            return redirect(request, back, "Un paiement en plusieurs fois se retire en le supprimant.")
+        obj.is_fixed = False
+        db.commit()
+        return redirect(request, back, f"« {_name(obj)} » retiré des charges fixes (rien n'est supprimé).")
+    if action == "include":
+        obj.is_fixed = True
+        db.commit()
+        return redirect(request, back, f"« {_name(obj)} » remis dans les charges fixes.")
+    if action == "delete":
+        name = _name(obj)
+        db.delete(obj)
+        db.commit()
+        return redirect(request, back, f"« {name} » supprimé.")
+    obj.theme = f.get("theme", "").strip()
+    if hasattr(obj, "account_id"):
+        obj.account_id = fint(f.get("account_id"))
+    if kind == "recurrence":
+        obj.label = f.get("label", "").strip() or obj.label
+        cents = fcents(f.get("amount"))
+        if cents:
+            obj.amount_cents = abs(cents) if obj.amount_cents > 0 else -abs(cents)
+        obj.frequency = f.get("frequency", obj.frequency)
+        obj.person_id = fint(f.get("person_id"))
+    elif kind == "insurance":
+        obj.name = f.get("label", "").strip() or obj.name
+        cents = fcents(f.get("amount"))
+        if cents:
+            obj.premium_cents = abs(cents)
+        obj.frequency = f.get("frequency", obj.frequency)
+        obj.person_id = fint(f.get("person_id"))
+    elif kind == "loan":
+        obj.name = f.get("label", "").strip() or obj.name
+        cents = fcents(f.get("amount"))
+        if cents:
+            obj.monthly_cents = abs(cents)
+    elif kind == "installment":
+        obj.label = f.get("label", "").strip() or obj.label
+        obj.person_id = fint(f.get("person_id"))
+    db.commit()
+    return redirect(request, back, "Enregistré.")
+
+
+def _name(obj):
+    return getattr(obj, "name", None) or getattr(obj, "label", "")

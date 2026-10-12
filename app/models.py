@@ -16,6 +16,8 @@ JEMS_STATUSES = {"a_declarer": "À déclarer", "declaree": "Déclarée", "rembou
 FREQUENCIES = {"hebdo": "Hebdomadaire", "mensuel": "Mensuelle", "trimestriel": "Trimestrielle",
                "semestriel": "Semestrielle", "annuel": "Annuelle"}
 FREQ_MONTHS = {"mensuel": 1, "trimestriel": 3, "semestriel": 6, "annuel": 12}
+THEMES = ["Logement", "Voiture & transport", "Famille & enfants", "Perso", "Santé & prévoyance", "Impôts",
+          "Abonnements & télécom", "Crédits conso", "Achats en plusieurs fois", "Autre"]
 
 transaction_tags = Table(
     "transaction_tags", Base.metadata,
@@ -85,6 +87,8 @@ class Loan(Base):
     # « Restant dû » relevé dans l'appli de la banque (quand durée/taux ne sont pas connus)
     known_remaining_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
     known_remaining_at: Mapped[date | None] = mapped_column(Date, nullable=True)
+    theme: Mapped[str] = mapped_column(String(40), default="")  # thématique des charges fixes (Logement, Voiture…)
+    is_fixed: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
 class Insurance(Base):
@@ -102,6 +106,9 @@ class Insurance(Base):
     match_pattern: Mapped[str] = mapped_column(String(120), default="")
     notes: Mapped[str] = mapped_column(Text, default="")
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    theme: Mapped[str] = mapped_column(String(40), default="")
+    is_fixed: Mapped[bool] = mapped_column(Boolean, default=True)
+    account_id: Mapped[int | None] = mapped_column(ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True)
     person: Mapped[Person | None] = relationship()
 
 
@@ -121,6 +128,8 @@ class Recurrence(Base):
     is_provision: Mapped[bool] = mapped_column(Boolean, default=False)
     is_fixed: Mapped[bool] = mapped_column(Boolean, default=True)  # charge/revenu fixe (vs montant variable : carte…)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    theme: Mapped[str] = mapped_column(String(40), default="")
+    account_id: Mapped[int | None] = mapped_column(ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True)
     category: Mapped[Category | None] = relationship()
 
 
@@ -138,6 +147,8 @@ class InstallmentPlan(Base):
     person_id: Mapped[int | None] = mapped_column(ForeignKey("persons.id"), nullable=True)
     scope: Mapped[str] = mapped_column(String(10), default="famille")
     notes: Mapped[str] = mapped_column(Text, default="")
+    theme: Mapped[str] = mapped_column(String(40), default="")
+    account_id: Mapped[int | None] = mapped_column(ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True)
     items: Mapped[list[InstallmentItem]] = relationship(
         back_populates="plan", cascade="all, delete-orphan", order_by="InstallmentItem.due_date")
     category: Mapped[Category | None] = relationship()

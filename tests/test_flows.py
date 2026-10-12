@@ -286,7 +286,40 @@ def test_fixed_charges_and_purchase_in_installments(client, db):
     assert db.scalars(select(Pending)).all() == []
     page = client.get("/fixed").text
     # 13,49 + 100 (1200/12) + 50 + 100 (prochaine échéance) = 263,49 ; la carte variable n'y est pas
-    assert "263,49" in page.replace(" ", "") and "Carte (variable)" not in page
+    assert "263,49" in page.replace(" ", "")
+    assert page.index("Carte (variable)") > page.index("Retirés des charges fixes")  # listée à part
     assert "2736,51" in page.replace(" ", "")  # reste = 3000 - 263,49
     home = client.get("/").text
     assert "Charges fixes" in home and "1 en cours" in home
+
+
+
+def test_fixed_list_is_editable(client, db):
+    from app.services import fixed_charges
+    client.post("/fixed/new", data={"label": "Nounou", "amount": "600", "direction": "out", "frequency": "mensuel",
+                                    "theme": "Famille & enfants", "account_id": "1"})
+    client.post("/fixed/new", data={"label": "Apport Laura", "amount": "1000", "direction": "in",
+                                    "frequency": "mensuel", "account_id": "1"})
+    client.post("/insurances", data={"name": "AXA Tesla", "insurer": "AXA", "kind": "auto", "premium": "100,90"})
+    ins = db.scalars(select(Insurance)).one()
+    f = fixed_charges(db)
+    assert {g["name"] for g in f["groups"]} == {"Famille & enfants", "Voiture & transport"}  # thème déduit
+    prov = {p["account"]: p for p in f["provisions"]}
+    assert prov["Compte courant"]["charges"] == 60000 and prov["Compte courant"]["to_fund"] == 0
+    # modification depuis la liste : thème + compte
+    client.post(f"/fixed/insurance/{ins.id}", data={"label": "AXA Tesla", "amount": "120", "frequency": "mensuel",
+                                                   "theme": "Perso", "account_id": "1"})
+    db.expire_all()
+    f = fixed_charges(db, "theme")
+    assert "Perso" in {g["name"] for g in f["groups"]} and f["total"] == 72000
+    assert {p["account"]: p for p in f["provisions"]}["Compte courant"]["to_fund"] == 0  # 720 - 1000 couverts
+    # retirer puis remettre
+    client.post(f"/fixed/insurance/{ins.id}", data={"action": "exclude"})
+    db.expire_all()
+    assert fixed_charges(db)["total"] == 60000 and len(fixed_charges(db)["excluded"]) == 1
+    client.post(f"/fixed/insurance/{ins.id}", data={"action": "include"})
+    db.expire_all()
+    assert fixed_charges(db)["total"] == 72000
+    for view in ("theme", "person", "account", "category"):
+        assert client.get(f"/fixed?view={view}").status_code == 200
+    assert client.get(f"/fixed/insurance/{ins.id}").status_code == 200

@@ -57,6 +57,10 @@ def apply_profile(db: Session, data: dict) -> dict:
     def person(name):
         return persons[name].id if name in persons else None
 
+    def account(number):
+        a = db.scalar(select(Account).where(Account.number == number)) if number else None
+        return a.id if a else None
+
     for item in data.get("accounts", []):
         a = db.scalar(select(Account).where(Account.number == item["number"])) if item.get("number") else None
         a = a or db.scalar(select(Account).where(Account.name == item["name"])) or Account(initial_date=date(2000, 1, 1))
@@ -73,6 +77,7 @@ def apply_profile(db: Session, data: dict) -> dict:
             from .models import Transaction
             if not db.scalar(select(Transaction.id).where(Transaction.account_id == demo.id).limit(1)):
                 demo.archived = True
+    db.flush()
     stats["comptes"] = len(data.get("accounts", []))
 
     for item in data.get("rules", []):
@@ -101,6 +106,10 @@ def apply_profile(db: Session, data: dict) -> dict:
         l.known_remaining_cents = abs(_cents(item["remaining"])) if item.get("remaining") is not None else None
         l.known_remaining_at = _date(item.get("remaining_at"))
         l.active = item.get("active", True)
+        l.theme = item.get("theme", l.theme or "")
+        l.is_fixed = item.get("is_fixed", True)
+        if item.get("account"):
+            l.account_id = account(item["account"])
         db.add(l)
     stats["crédits"] = len(data.get("loans", []))
 
@@ -115,6 +124,10 @@ def apply_profile(db: Session, data: dict) -> dict:
         i.next_due = _date(item.get("next_due"))
         i.person_id = person(item.get("person"))
         i.notes = item.get("notes", i.notes or "")
+        i.theme = item.get("theme", i.theme or "")
+        i.is_fixed = item.get("is_fixed", True)
+        if item.get("account"):
+            i.account_id = account(item["account"])
         db.add(i)
     stats["assurances"] = len(data.get("insurances", []))
 
@@ -130,6 +143,9 @@ def apply_profile(db: Session, data: dict) -> dict:
         r.scope = item.get("scope", "famille")
         r.is_provision = bool(item.get("is_provision"))
         r.is_fixed = item.get("is_fixed", True)
+        r.theme = item.get("theme", r.theme or "")
+        if item.get("account"):
+            r.account_id = account(item["account"])
         db.add(r)
     stats["récurrences"] = len(data.get("recurrences", []))
 

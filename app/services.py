@@ -640,59 +640,143 @@ def recategorize_all(db: Session) -> int:
 # ---------------------------------------------------------------- charges fixes
 
 PER_MONTH = {"hebdo": 52 / 12, "mensuel": 1, "trimestriel": 1 / 3, "semestriel": 1 / 6, "annuel": 1 / 12}
+CATEGORY_THEMES = {
+    "Logement": "Logement", "Copropriété & charges": "Logement", "Énergie & eau": "Logement",
+    "Maison & équipement": "Logement", "Impôts & taxes": "Impôts", "Enfants & école": "Famille & enfants",
+    "Télécom & abonnements": "Abonnements & télécom", "Transport & carburant": "Voiture & transport",
+    "Santé": "Santé & prévoyance", "Crédits": "Crédits conso", "Frais bancaires": "Autre",
+}
 
 
-def fixed_charges(db: Session) -> dict:
-    """Vue « budget fixe » : ce qui sort (et rentre) chaque mois quoi qu'il arrive, en équivalent mensuel."""
-    groups: dict[str, dict] = {}
+def theme_of(kind: str, obj) -> str:
+    if obj.theme:
+        return obj.theme
+    if kind == "loan":
+        return {"immo": "Logement", "travaux": "Logement", "auto": "Voiture & transport"}.get(obj.kind, "Crédits conso")
+    if kind == "insurance":
+        k = (obj.kind or "").lower()
+        if k in ("auto", "moto"):
+            return "Voiture & transport"
+        if k in ("habitation", "emprunteur"):
+            return "Logement"
+        if k in ("mutuelle", "prévoyance", "vie"):
+            return "Santé & prévoyance"
+        return "Famille & enfants" if k == "scolaire" else "Autre"
+    if kind == "installment":
+        return "Achats en plusieurs fois"
+    cat = obj.category.name if obj.category else ""
+    if cat in CATEGORY_THEMES:
+        return CATEGORY_THEMES[cat]
+    return "Perso" if obj.scope == "perso" else "Autre"
 
-    def add(group, icon, label, monthly, url, sub=""):
-        g = groups.setdefault(group, {"name": group, "icon": icon, "items": [], "total": 0})
-        g["items"].append({"label": label, "monthly": round(monthly), "url": url, "sub": sub})
-        g["total"] += round(monthly)
+
+def _paying_account(db: Session, kind: str, obj) -> int | None:
+    if getattr(obj, "account_id", None):
+        return obj.account_id
+    col = {"loan": Transaction.loan_id, "insurance": Transaction.insurance_id,
+           "recurrence": Transaction.recurrence_id}.get(kind)
+    if col is not None:
+        return db.scalar(select(Transaction.account_id).where(col == obj.id).order_by(Transaction.date.desc()).limit(1))
+    if kind == "installment":
+        ids = [i.transaction_id for i in obj.items if i.transaction_id]
+        if ids:
+            return db.scalar(select(Transaction.account_id).where(Transaction.id.in_(ids)).limit(1))
+    return None
+
+
+def fixed_items(db: Session) -> tuple[list[dict], list[dict], list[dict]]:
+    """-> (charges fixes, revenus fixes, éléments exclus) ; montants en équivalent mensuel."""
+    accounts = {a.id: a.name for a in db.scalars(select(Account))}
+    persons = {p.id: p.name for p in db.scalars(select(Person))}
+    out, income, excluded = [], [], []
+
+    def item(kind, obj, label, monthly, url, sub="", category="", person_id=None):
+        acc = _paying_account(db, kind, obj)
+        return {"kind": kind, "id": obj.id, "label": label, "monthly": round(monthly), "url": url,
+                "edit_url": f"/fixed/{kind}/{obj.id}", "sub": sub, "theme": theme_of(kind, obj),
+                "category": category or "Autre", "account_id": acc, "account": accounts.get(acc, "Compte non défini"),
+                "person": persons.get(person_id, "Famille")}
 
     for loan in db.scalars(select(Loan).where(Loan.active.is_(True))):
         st = loan_status(loan)
         if st["remaining_count"] == 0 or not loan.monthly_cents:
             continue
         sub = f"fin ≈ {st['end_date']:%m/%Y}" if st.get("end_date") else "durée à compléter"
-        add("Crédits", "🏦", loan.name, loan.monthly_cents, f"/loans/{loan.id}", sub)
+        it = item("loan", loan, loan.name, loan.monthly_cents, f"/loans/{loan.id}", sub, "Crédits")
+        (out if loan.is_fixed else excluded).append(it)
     for ins in db.scalars(select(Insurance).where(Insurance.active.is_(True))):
         months = FREQ_MONTHS.get(ins.frequency, 1)
-        add("Assurances", "🛡️", ins.name, ins.premium_cents / months, f"/insurances/{ins.id}",
-            "" if months == 1 else f"{ins.premium_cents / 100:.2f} € / {months} mois")
-    income = []
-    for rec in db.scalars(select(Recurrence).where(Recurrence.active.is_(True), Recurrence.is_fixed.is_(True))):
+        sub = "" if months == 1 else f"{ins.premium_cents / 100:.2f} € tous les {months} mois"
+        it = item("insurance", ins, ins.name, ins.premium_cents / months, f"/insurances/{ins.id}", sub,
+                  "Assurances", ins.person_id)
+        (out if ins.is_fixed else excluded).append(it)
+    for rec in db.scalars(select(Recurrence).where(Recurrence.active.is_(True))):
         if rec.end_date and rec.end_date < date.today():
             continue
         if rec.category and rec.category.kind == "virement":
             continue
-        monthly = rec.amount_cents * PER_MONTH.get(rec.frequency, 1)
-        if rec.amount_cents > 0:
-            income.append({"label": rec.label, "monthly": round(monthly), "url": f"/recurrences/{rec.id}"})
-            continue
-        name = rec.category.name if rec.category else "Autres charges"
-        icon = rec.category.icon if rec.category else "🔁"
-        sub = "" if rec.frequency == "mensuel" else f"{-rec.amount_cents / 100:.2f} € {rec.frequency}"
-        add(name, icon, rec.label, -monthly, f"/recurrences/{rec.id}", sub)
-
-    plans = []
+        monthly = abs(rec.amount_cents) * PER_MONTH.get(rec.frequency, 1)
+        sub = "" if rec.frequency == "mensuel" else f"{abs(rec.amount_cents) / 100:.2f} € ({rec.frequency})"
+        it = item("recurrence", rec, rec.label, monthly, f"/recurrences/{rec.id}", sub,
+                  rec.category.name if rec.category else "", rec.person_id)
+        if not rec.is_fixed:
+            excluded.append(it)
+        elif rec.amount_cents > 0:
+            income.append(it)
+        else:
+            out.append(it)
     for plan in db.scalars(select(InstallmentPlan)):
         left = [i for i in plan.items if i.transaction_id is None]
-        if not left:
-            continue
-        plans.append({"plan": plan, "left_count": len(left), "left_cents": sum(i.amount_cents for i in left),
-                      "next": left[0], "end": left[-1].due_date})
-        add("Paiements en plusieurs fois", "🧩", plan.label, left[0].amount_cents, f"/installments/{plan.id}",
-            f"{len(left)} échéance(s) restante(s), fin {left[-1].due_date:%m/%Y}")
+        if left:
+            out.append(item("installment", plan, plan.label, left[0].amount_cents, f"/installments/{plan.id}",
+                            f"{len(left)} échéance(s) restante(s), fin {left[-1].due_date:%m/%Y}",
+                            plan.category.name if plan.category else "", plan.person_id))
+    return out, income, excluded
 
+
+VIEWS = {"theme": "Thématique", "person": "Pour qui", "account": "Compte", "category": "Catégorie"}
+THEME_ICONS = {"Logement": "🏠", "Voiture & transport": "🚗", "Famille & enfants": "👨‍👩‍👧", "Perso": "🙋",
+               "Santé & prévoyance": "🩺", "Impôts": "🧾", "Abonnements & télécom": "📱", "Crédits conso": "🏦",
+               "Achats en plusieurs fois": "🧩", "Autre": "📌"}
+
+
+def fixed_charges(db: Session, view: str = "theme") -> dict:
+    """Vue « budget fixe » : ce qui sort (et rentre) chaque mois, regroupé selon `view`,
+    et ce qu'il faut provisionner sur chaque compte."""
+    out, income, excluded = fixed_items(db)
+    key = view if view in VIEWS else "theme"
+    groups: dict[str, dict] = {}
+    for it in out:
+        name = it[key]
+        g = groups.setdefault(name, {"name": name, "icon": THEME_ICONS.get(name, "") if key == "theme" else "",
+                                     "items": [], "total": 0})
+        g["items"].append(it)
+        g["total"] += it["monthly"]
     ordered = sorted(groups.values(), key=lambda g: -g["total"])
     for g in ordered:
         g["items"].sort(key=lambda i: -i["monthly"])
-    total_out = sum(g["total"] for g in ordered)
-    total_in = sum(i["monthly"] for i in income)
+
+    # provisionnement : ce que chaque compte doit recevoir chaque mois pour couvrir ses charges fixes
+    prov: dict[str, dict] = {}
+    for it in out:
+        p = prov.setdefault(it["account"], {"account": it["account"], "charges": 0, "income": 0, "incomes": []})
+        p["charges"] += it["monthly"]
+    for it in income:
+        p = prov.setdefault(it["account"], {"account": it["account"], "charges": 0, "income": 0, "incomes": []})
+        p["income"] += it["monthly"]
+        p["incomes"].append(it)
+    for p in prov.values():
+        p["to_fund"] = max(p["charges"] - p["income"], 0)
+    total_out = sum(it["monthly"] for it in out)
+    total_in = sum(it["monthly"] for it in income)
+    plans = []
+    for plan in db.scalars(select(InstallmentPlan)):
+        left = [i for i in plan.items if i.transaction_id is None]
+        if left:
+            plans.append({"plan": plan, "left_count": len(left), "left_cents": sum(i.amount_cents for i in left)})
     return {"groups": ordered, "total": total_out, "income": income, "total_in": total_in,
-            "left": total_in - total_out, "plans": plans}
+            "left": total_in - total_out, "excluded": excluded, "view": key,
+            "provisions": sorted(prov.values(), key=lambda p: -p["charges"]), "plans": plans}
 
 
 def build_installments(db: Session, plan: InstallmentPlan, total: int, count: int, first: date):

@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% set view = request.query_params.get('view', 'theme') %}
+{% block back %}<a class="back" href="/fixed?view={{ request.query_params.get('view', 'theme') }}">‹</a>{% endblock %}
+{% block heading %}Charge fixe{% endblock %}
+{% block content %}
+{% set labels = {'loan': 'Crédit', 'insurance': 'Assurance', 'recurrence': 'Récurrence', 'installment': 'Paiement en plusieurs fois'} %}
+<form method="post" action="/fixed/{{ kind }}/{{ obj.id }}" class="card">
+  <input type="hidden" name="view" value="{{ view }}">
+  <span class="chip">{{ labels[kind] }}</span>
+  {% if item %}<span class="chip grey">{{ item.monthly|money }} / mois</span>{% endif %}
+  <label>Libellé</label>
+  <input name="label" value="{{ obj.name if kind in ('loan', 'insurance') else obj.label }}">
+  {% if kind == 'recurrence' or kind == 'insurance' %}
+  <div class="grid2">
+    <div><label>Montant</label><input name="amount" inputmode="decimal" value="{{ ((obj.amount_cents|abs) if kind == 'recurrence' else obj.premium_cents)|eur }}"></div>
+    <div><label>Fréquence</label><select name="frequency">{% for k, v in FREQUENCIES.items() %}<option value="{{ k }}" {{ 'selected' if obj.frequency == k }}>{{ v }}</option>{% endfor %}</select></div>
+  </div>
+  {% elif kind == 'loan' %}
+  <label>Mensualité</label><input name="amount" inputmode="decimal" value="{{ obj.monthly_cents|eur }}">
+  {% endif %}
+  <div class="grid2">
+    <div><label>Thématique</label><input name="theme" list="themes" value="{{ obj.theme }}" placeholder="{{ theme }}"></div>
+    <div><label>Payé par</label>
+      <select name="account_id"><option value="">{{ 'Détecté : ' ~ item.account if item and not obj.account_id else '—' }}</option>
+        {% for a in accounts if a.kind != 'carte' %}<option value="{{ a.id }}" {{ 'selected' if obj.account_id == a.id }}>{{ a.name }}</option>{% endfor %}</select></div>
+  </div>
+  {% if kind != 'loan' %}
+  <label>Pour qui</label>{{ m.person_select(persons, obj.person_id, 'Famille') }}
+  {% endif %}
+  <datalist id="themes">{% for t in themes %}<option value="{{ t }}">{% endfor %}</datalist>
+  <p class="sub">Laissez la thématique vide pour la déduire automatiquement (actuellement : <b>{{ theme }}</b>).</p>
+  <button class="btn block" type="submit">Enregistrer</button>
+</form>
+
+<div class="actions" style="justify-content:center">
+  {% if kind != 'installment' %}
+    {% if obj.is_fixed %}
+    <form method="post" action="/fixed/{{ kind }}/{{ obj.id }}"><input type="hidden" name="view" value="{{ view }}">
+      <button class="btn small ghost" name="action" value="exclude">Retirer des charges fixes</button></form>
+    {% else %}
+    <form method="post" action="/fixed/{{ kind }}/{{ obj.id }}"><input type="hidden" name="view" value="{{ view }}">
+      <button class="btn small ghost" name="action" value="include">Remettre dans les charges fixes</button></form>
+    {% endif %}
+  {% endif %}
+  <a class="btn small ghost" href="{{ {'loan': '/loans/', 'insurance': '/insurances/', 'recurrence': '/recurrences/', 'installment': '/installments/'}[kind] }}{{ obj.id }}">Fiche complète</a>
+  <form method="post" action="/fixed/{{ kind }}/{{ obj.id }}"><input type="hidden" name="view" value="{{ view }}">
+    <button class="btn small danger" name="action" value="delete" data-confirm="Supprimer définitivement ? (pour seulement l'enlever de la liste, utilisez « Retirer »)">Supprimer</button></form>
+</div>
+<p class="sub" style="text-align:center">« Retirer » l'enlève de la liste sans rien effacer ; « Supprimer » efface {{ 'le crédit' if kind == 'loan' else ('le contrat' if kind == 'insurance' else 'la charge') }}.</p>
+{% endblock %}

@@ -11,8 +11,8 @@ from ..config import UPLOAD_DIR
 from ..db import get_db
 from ..models import Account, Attachment, InstallmentPlan, Pending, Rule, Tag, Transaction, transaction_tags
 from ..services import (
-    account_balance, add_tags, apply_auto, build_installments, fixed_charges, link_installments, inspect_month, link_pending, match_pending_to_existing,
-    month_stats, pending_total, similar_uncategorized, upcoming,
+    account_balance, add_tags, apply_auto, build_installments, fixed_charges, inspect_month, link_installments,
+    link_pending, match_pending_to_existing, month_stats, pending_total, similar_uncategorized, upcoming,
 )
 from ..search import SORTS, apply_search
 from ..templating import redirect, render
@@ -53,11 +53,6 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
                   available=total + pend, end_of_month=total + pend + sum(e.amount_cents for e in to_month_end),
                   upcoming=next30[:6], stats=stats, alerts=alerts, spent=spent,
                   max_spent=max([c["total"] for c in spent] or [1]), fixed=fixed)
-
-
-@router.get("/fixed")
-def fixed_view(request: Request, db: Session = Depends(get_db)):
-    return render(request, db, "fixed.html", fixed=fixed_charges(db))
 
 
 # ---------------------------------------------------------------- opérations

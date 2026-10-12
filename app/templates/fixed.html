@@ -3,45 +3,97 @@
 {% block heading %}Charges fixes{% endblock %}
 {% block content %}
 <div class="card hero">
-  <div class="muted">Chaque mois, quoi qu'il arrive</div>
+  <div class="muted">Charges fixes par mois</div>
   <div class="big">{{ fixed.total|money }}</div>
   <div style="margin-top:8px;font-size:14px">Revenus fixes {{ fixed.total_in|money }} · <b>reste {{ fixed.left|money }}</b> pour vivre et épargner</div>
 </div>
-<p class="sub">Crédits, assurances, abonnements, école, impôts mensualisés, paiements en plusieurs fois… en équivalent mensuel
-  (une dépense annuelle compte pour 1/12). Touchez une ligne pour la modifier.</p>
 
+<!-- Provisionnement des comptes -->
+<h2>À provisionner chaque mois</h2>
+<div class="card">
+  {% for p in fixed.provisions %}
+  <div style="padding:6px 0;{{ 'border-top:1px solid var(--line)' if not loop.first }}">
+    <div style="display:flex;justify-content:space-between;gap:8px"><b>{{ p.account }}</b><b>{{ p.charges|money }}</b></div>
+    {% if p.income %}
+    <div class="sub">dont couvert par {% for i in p.incomes %}{{ i.label }} ({{ i.monthly|money }}){{ ', ' if not loop.last }}{% endfor %}</div>
+    <div class="sub">{% if p.to_fund %}➡️ <b style="color:var(--primary)">à virer : {{ p.to_fund|money }} / mois</b>{% else %}✅ couvert par les revenus fixes de ce compte{% endif %}</div>
+    {% else %}
+    <div class="sub">➡️ <b style="color:var(--primary)">à virer : {{ p.to_fund|money }} / mois</b></div>
+    {% endif %}
+  </div>
+  {% else %}<p class="sub" style="margin:0">Ajoutez des charges fixes pour voir quoi provisionner.</p>{% endfor %}
+  <p class="sub" style="margin:8px 0 0">Le compte qui paie chaque charge est retrouvé sur vos relevés ; vous pouvez le changer ligne par ligne.</p>
+</div>
+
+<!-- Vues -->
+<h2>Détail</h2>
+<div class="seg" style="margin-bottom:12px">
+  {% for k, v in views.items() %}<label onclick="location.href='/fixed?view={{ k }}'" {% if fixed.view == k %}style="background:var(--card);font-weight:600;color:var(--primary)"{% endif %}>{{ v }}</label>{% endfor %}
+</div>
 {% for g in fixed.groups %}
-<details class="card" {{ 'open' if loop.index <= 3 }}>
+<details class="card" {{ 'open' if loop.index <= 4 }}>
   <summary style="display:flex;justify-content:space-between;gap:8px">
     <b>{{ g.icon }} {{ g.name }}</b><span class="amt">{{ g.total|money }}</span>
   </summary>
   <div class="bar" style="margin:8px 0 4px"><span style="width:{{ (100 * g.total / (fixed.total or 1))|round }}%"></span></div>
   <ul class="list">
     {% for i in g['items'] %}
-    <li style="padding:10px 0"><a class="row" href="{{ i.url }}">
-      <div class="grow"><div class="ell">{{ i.label }}</div>{% if i.sub %}<div class="sub">{{ i.sub }}</div>{% endif %}</div>
-      <div class="amt">{{ i.monthly|money }}</div>
+    <li style="padding:10px 0"><a class="row" href="{{ i.edit_url }}?view={{ fixed.view }}">
+      <div class="grow"><div class="ell">{{ i.label }}</div>
+        <div class="sub ell">{{ i.account }}{% if fixed.view != 'theme' %} · {{ i.theme }}{% endif %}{% if i.sub %} · {{ i.sub }}{% endif %}</div></div>
+      <div class="amt">{{ i.monthly|money }}</div><span class="sub">✎</span>
     </a></li>
     {% endfor %}
   </ul>
 </details>
 {% else %}
-<div class="empty"><div class="i">📌</div>Aucune charge fixe. Ajoutez vos crédits, assurances et abonnements.</div>
+<div class="empty"><div class="i">📌</div>Aucune charge fixe pour l'instant.</div>
 {% endfor %}
+
+<!-- Ajout -->
+<details class="card" id="ajout">
+  <summary><b>+ Ajouter une charge fixe</b></summary>
+  <form method="post" action="/fixed/new">
+    <input type="hidden" name="view" value="{{ fixed.view }}">
+    <div class="seg" style="margin-top:10px">
+      <label><input type="radio" name="direction" value="out" checked>Charge</label>
+      <label><input type="radio" name="direction" value="in">Revenu</label>
+    </div>
+    <label>Libellé</label><input name="label" placeholder="ex : Nounou, Netflix, Cantine…" required>
+    <div class="grid2">
+      <div><label>Montant</label><input name="amount" inputmode="decimal" required></div>
+      <div><label>Fréquence</label><select name="frequency">{% for k, v in FREQUENCIES.items() %}<option value="{{ k }}" {{ 'selected' if k == 'mensuel' }}>{{ v }}</option>{% endfor %}</select></div>
+      <div><label>Thématique</label><input name="theme" list="themes" placeholder="Logement, Voiture…"></div>
+      <div><label>Payé par</label><select name="account_id"><option value="">—</option>{% for a in accounts if a.kind != 'carte' %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}</select></div>
+      <div><label>Pour qui</label><select name="person_id"><option value="">Famille</option>{% for p in persons %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}</select></div>
+      <div><label>Prochaine date</label><input type="date" name="next_date" value="{{ today.isoformat() }}"></div>
+    </div>
+    <label>Mot du libellé bancaire <span class="sub">(facultatif, pour la reconnaître sur les relevés)</span></label>
+    <input name="match_pattern">
+    <button class="btn block" type="submit">Ajouter</button>
+  </form>
+</details>
+<datalist id="themes">{% for t in themes %}<option value="{{ t }}">{% endfor %}</datalist>
 
 {% if fixed.income %}
 <h2>Revenus fixes</h2>
 <div class="card flush"><ul class="list">
   {% for i in fixed.income %}
-  <li><a class="row" href="{{ i.url }}"><div class="grow">{{ i.label }}</div><div class="amt pos">{{ i.monthly|money }}</div></a></li>
+  <li><a class="row" href="{{ i.edit_url }}?view={{ fixed.view }}"><div class="grow"><div>{{ i.label }}</div><div class="sub">{{ i.account }}</div></div><div class="amt pos">{{ i.monthly|money }}</div></a></li>
   {% endfor %}
 </ul></div>
 {% endif %}
 
-<div class="actions">
-  <a class="btn small ghost" href="/recurrences/new">+ Charge récurrente</a>
-  <a class="btn small ghost" href="/installments/new">+ Paiement en plusieurs fois</a>
-  <a class="btn small ghost" href="/loans/new">+ Crédit</a>
-  <a class="btn small ghost" href="/insurances/new">+ Assurance</a>
-</div>
+{% if fixed.excluded %}
+<h2>Retirés des charges fixes</h2>
+<div class="card flush"><ul class="list">
+  {% for i in fixed.excluded %}
+  <li>
+    <div class="grow"><div class="ell muted">{{ i.label }}</div><div class="sub">{{ i.monthly|money }} / mois</div></div>
+    <form method="post" action="{{ i.edit_url }}"><input type="hidden" name="view" value="{{ fixed.view }}">
+      <button class="btn small ghost" name="action" value="include">Remettre</button></form>
+  </li>
+  {% endfor %}
+</ul></div>
+{% endif %}
 {% endblock %}
