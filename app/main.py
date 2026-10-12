@@ -10,7 +10,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from . import models  # noqa: F401  (enregistre les tables)
 from .config import APP_PASSWORD, COOKIE_SECURE, SECRET_KEY
-from .db import Base, SessionLocal, engine
+from .db import SessionLocal, migrate
 from .routers import core, finance, imports, reports, settings
 from .services import seed
 from .templating import templates
@@ -18,7 +18,7 @@ from .templating import templates
 STATIC = Path(__file__).parent / "static"
 PUBLIC = ("/login", "/static/", "/manifest.webmanifest", "/sw.js", "/healthz")
 
-Base.metadata.create_all(engine)
+migrate()
 with SessionLocal() as _db:
     seed(_db)
 

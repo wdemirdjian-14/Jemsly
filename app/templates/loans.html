@@ -14,9 +14,11 @@
       <div class="ico">🏦</div>
       <div class="grow">
         <div class="ell">{{ l.name }} {% if not l.active %}<span class="chip grey">clos</span>{% endif %}</div>
-        <div class="sub">{{ l.lender }} · {{ kinds.get(l.kind, l.kind) }} · fin {{ s.end_date.strftime('%m/%Y') }}</div>
+        <div class="sub">{{ l.lender }} · {{ kinds.get(l.kind, l.kind) }}{% if s.end_date %} · fin {{ s.end_date.strftime('%m/%Y') }}{% endif %}</div>
+        {% if s.count %}
         <div class="bar"><span style="width:{{ s.progress }}%"></span></div>
-        <div class="sub">{{ s.paid_count }}/{{ s.count }} échéances · reste {{ s.remaining_cents|money }}</div>
+        <div class="sub">{{ s.paid_count }}/{{ s.count }} échéances · reste {{ s.remaining_cents|money if s.remaining_cents is not none else '?' }}</div>
+        {% else %}<div class="sub" style="color:var(--warn)">Durée et capital à compléter</div>{% endif %}
       </div>
       <div class="amt">{{ l.monthly_cents|money }}</div>
     </a></li>

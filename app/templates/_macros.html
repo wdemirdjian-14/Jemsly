@@ -3,7 +3,7 @@
   <a class="row" href="/transactions/{{ t.id }}{% if back %}?back={{ back|urlencode }}{% endif %}">
     <div class="ico">{{ t.category.icon if t.category else '❓' }}</div>
     <div class="grow">
-      <div class="ell">{{ t.label }}</div>
+      <div class="ell">{{ t.insurance.name if t.insurance else (t.loan.name if t.loan else t.label) }}</div>
       <div class="sub ell">
         {{ t.date|d }} · {{ t.category.name if t.category else 'À catégoriser' }}{% if t.person %} · {{ t.person.name }}{% endif %}
       </div>

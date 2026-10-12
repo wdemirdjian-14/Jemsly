@@ -37,6 +37,10 @@ class Account(Base):
     initial_balance_cents: Mapped[int] = mapped_column(Integer, default=0)
     initial_date: Mapped[date] = mapped_column(Date, default=date.today)
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    number: Mapped[str] = mapped_column(String(40), default="")  # n° de compte / de carte (détection à l'import)
+    kind: Mapped[str] = mapped_column(String(10), default="courant")  # courant | joint | carte | epargne
+    default_scope: Mapped[str] = mapped_column(String(10), default="")  # périmètre par défaut des opérations
+    default_person_id: Mapped[int | None] = mapped_column(ForeignKey("persons.id", ondelete="SET NULL"), nullable=True)
 
 
 class Category(Base):
@@ -160,6 +164,7 @@ class ImportBatch(Base):
     statement_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     imported: Mapped[int] = mapped_column(Integer, default=0)
     duplicates: Mapped[int] = mapped_column(Integer, default=0)
+    meta_json: Mapped[str] = mapped_column(Text, default="{}")  # contrôles du relevé (totaux, sections)
     account: Mapped[Account] = relationship()
 
 
@@ -226,6 +231,7 @@ class Rule(Base):
     scope: Mapped[str | None] = mapped_column(String(10), nullable=True)
     tags: Mapped[str] = mapped_column(String(200), default="")  # séparés par des virgules
     priority: Mapped[int] = mapped_column(Integer, default=100)
+    max_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)  # seulement si |montant| ≤ max
     hits: Mapped[int] = mapped_column(Integer, default=0)
     category: Mapped[Category | None] = relationship()
     person: Mapped[Person | None] = relationship()

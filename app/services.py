@@ -32,13 +32,14 @@ DEFAULT_CATEGORIES = [
     ("Virement interne / épargne", "🔁", "virement", None),
 ]
 DEFAULT_RULES = [
-    ("FRAIS|COMMISSION|AGIOS|COTISATION CARTE", "debit", "Frais bancaires"),
-    ("RETRAIT DAB|RETRAIT", "debit", "Retraits espèces"),
+    ("FRAIS|COMMISSION|AGIOS|COTISATION CARTE|INTERETS DEBITEURS", "debit", "Frais bancaires"),
+    ("RETRAIT DAB|RETRAIT|RET DAB", "debit", "Retraits espèces"),
     ("CARREFOUR|LECLERC|AUCHAN|INTERMARCHE|LIDL|SUPER U|HYPER U|MONOPRIX|FRANPRIX|ALDI|CASINO|NETTO|GRAND FRAIS|PICARD", "debit", "Alimentation"),
-    ("TOTAL|ESSO|SHELL|BP |AVIA|SNCF|RATP|PEAGE|VINCI|SANEF|APRR|UBER|BLABLACAR", "debit", "Transport & carburant"),
-    ("EDF|ENGIE|TOTALENERGIES|VEOLIA|SUEZ|SAUR|ENI ", "debit", "Énergie & eau"),
+    ("EDF|ENGIE|TOTALENERGIES ELEC|VEOLIA|SUEZ|SAUR|ENI ", "debit", "Énergie & eau"),
+    ("TOTAL ACCESS|TOTALENERGIES|ESSO|SHELL|BP |AVIA|SNCF|RATP|PEAGE|VINCI|SANEF|APRR|UBER|BLABLACAR|PARKING|INDIGO",
+     "debit", "Transport & carburant"),
     ("ORANGE|SFR|BOUYGUES|FREE MOBILE|FREE TELECOM|SOSH|RED BY|NETFLIX|SPOTIFY|DEEZER|DISNEY|CANAL|AMAZON PRIME|APPLE.COM|GOOGLE", "debit", "Télécom & abonnements"),
-    ("PHARMACIE|DOCTEUR|DR |CPAM|MEDECIN|LABO|OPTIC|DENTIST", "debit", "Santé"),
+    ("PHARMACIE|PHARMA |DOCTEUR|DR |CPAM|MEDECIN|LABO|OPTIC|DENTIST", "debit", "Santé"),
     ("DGFIP|IMPOT|TRESOR PUBLIC|AMENDE", "debit", "Impôts & taxes"),
     ("CAF |CAF-|ALLOCATIONS", "credit", "Aides & allocations"),
 ]
@@ -94,7 +95,7 @@ def category_by_name(db: Session, name: str, kind="depense", icon="•") -> Cate
 def _set_scope(tx: Transaction, scope: str | None):
     if scope:
         tx.scope = scope
-        if scope == "jems" and not tx.jems_status:
+        if scope == "jems" and not tx.jems_status and tx.amount_cents < 0:
             tx.jems_status = "a_declarer"
 
 
@@ -176,6 +177,8 @@ def apply_rules(db: Session, tx: Transaction) -> bool:
             continue
         if rule.direction == "credit" and tx.amount_cents < 0:
             continue
+        if rule.max_cents and abs(tx.amount_cents) > rule.max_cents:
+            continue
         if label_contains(tx.label, rule.pattern):
             if rule.category_id:
                 tx.category_id = rule.category_id
@@ -216,6 +219,12 @@ def apply_learning(db: Session, tx: Transaction) -> bool:
 
 def apply_auto(db: Session, tx: Transaction) -> str:
     """Catégorise une opération fraîchement importée (tx doit avoir un id)."""
+    acc = db.get(Account, tx.account_id)
+    if acc:
+        if acc.default_scope and tx.scope in ("", "famille"):
+            _set_scope(tx, acc.default_scope)
+        if acc.default_person_id and not tx.person_id:
+            tx.person_id = acc.default_person_id
     p = find_pending_for(db, tx)
     if p:
         link_pending(db, p, tx)
@@ -250,7 +259,7 @@ def apply_auto(db: Session, tx: Transaction) -> str:
             if tx.amount_cents < 0:
                 tx.category_id = category_by_name(db, "Assurances", icon="🛡️").id
                 _advance(ins, "next_due", tx.date, ins.frequency)
-            add_tags(db, tx, ["assurance", ins.insurer, ins.kind])
+            add_tags(db, tx, ["assurance", ins.insurer] + ([ins.kind] if ins.kind != "autre" else []))
             tx.person_id = ins.person_id or tx.person_id
             tx.categorized = bool(tx.category_id)
             tx.auto_source = "assurance"
@@ -303,6 +312,10 @@ def pending_total(db: Session) -> int:
 
 def loan_status(loan: Loan, today: date | None = None) -> dict:
     today = today or date.today()
+    if not loan.duration_months:  # durée inconnue : on suit les mensualités sans projeter la fin
+        return {"paid_count": None, "count": None, "remaining_count": None, "remaining_cents": None,
+                "end_date": None, "next_date": None, "progress": 0, "interest_cents": 0,
+                "remaining_payments_cents": None}
     n = max(loan.duration_months, 1)
     r = (loan.rate or 0) / 100 / 12
     m = max(loan.monthly_cents - loan.insurance_cents, 0)
@@ -317,6 +330,8 @@ def loan_status(loan: Loan, today: date | None = None) -> dict:
     else:
         remaining = p - m * k
     remaining = max(round(remaining), 0) if k < n else 0
+    if not p:
+        remaining = None  # montant emprunté non renseigné
     total_cost = m * n - p if p else 0
     return {
         "paid_count": k, "count": n, "remaining_count": n - k,
@@ -359,7 +374,7 @@ def upcoming(db: Session, start: date, end: date) -> list[Expected]:
                                     f"/insurances/{ins.id}", late=d < today))
             d = next_occurrence(d, ins.frequency)
     for loan in db.scalars(select(Loan).where(Loan.active.is_(True))):
-        for k in range(loan.duration_months):
+        for k in range(loan.duration_months or 1200):
             d = add_months(loan.start_date, k)
             if d > end:
                 break
@@ -414,7 +429,8 @@ def month_transactions(db: Session, month: str) -> list[Transaction]:
 def month_stats(db: Session, month: str) -> dict:
     txs = month_transactions(db, month)
     is_transfer = lambda t: t.category is not None and t.category.kind == "virement"  # noqa: E731
-    flows = [t for t in txs if not is_transfer(t)]
+    # Le foyer : hors virements internes et hors Jems (avancé puis remboursé par l'employeur, suivi à part)
+    flows = [t for t in txs if not is_transfer(t) and t.scope != "jems"]
     income = sum(t.amount_cents for t in flows if t.amount_cents > 0)
     expenses = -sum(t.amount_cents for t in flows if t.amount_cents < 0)
     by_cat, by_person, by_scope, by_merchant = defaultdict(int), defaultdict(int), defaultdict(int), defaultdict(int)
@@ -441,6 +457,7 @@ def month_stats(db: Session, month: str) -> dict:
         "merchants": sorted(by_merchant.items(), key=lambda kv: -kv[1])[:10],
         "uncategorized": sum(1 for t in txs if not t.categorized),
         "jems_total": -sum(t.amount_cents for t in txs if t.scope == "jems" and t.amount_cents < 0),
+        "jems_reimbursed": sum(t.amount_cents for t in txs if t.scope == "jems" and t.amount_cents > 0),
         "jems_todo": sum(1 for t in txs if t.scope == "jems" and t.jems_status == "a_declarer"),
         "transactions": txs,
     }
@@ -451,6 +468,7 @@ def inspect_month(db: Session, month: str, stats: dict | None = None) -> list[di
     stats = stats or month_stats(db, month)
     alerts = []
     prev = [month_stats(db, shift_month(month, -i)) for i in (1, 2, 3)]
+    prev = [ps for ps in prev if _complete(ps)]  # on ne compare qu'à des mois entièrement importés
     prev_by_cat = defaultdict(list)
     for ps in prev:
         for c in ps["categories"]:
@@ -465,10 +483,10 @@ def inspect_month(db: Session, month: str, stats: dict | None = None) -> list[di
                            "detail": f"{c['total'] / 100:.2f} € pour un budget de {c['budget'] / 100:.2f} €",
                            "url": f"/transactions?month={month}&category={c['id'] or 0}"})
         hist = prev_by_cat.get(c["id"], [])
-        avg = sum(hist) / 3 if hist else 0
+        avg = sum(hist) / len(prev) if len(prev) >= 2 else 0
         if avg > 0 and c["total"] > 1.5 * avg and c["total"] - avg > 5000:
             alerts.append({"level": "warn", "title": f"Hausse inhabituelle : {c['icon']} {c['name']}",
-                           "detail": f"{c['total'] / 100:.2f} € contre {avg / 100:.2f} € en moyenne sur 3 mois",
+                           "detail": f"{c['total'] / 100:.2f} € contre {avg / 100:.2f} € en moyenne sur {len(prev)} mois",
                            "url": f"/transactions?month={month}&category={c['id'] or 0}"})
     txs = stats["transactions"]
     fees = [t for t in txs if t.amount_cents < 0 and label_contains(t.label, "FRAIS|COMMISSION|AGIOS|INTERETS DEBITEURS")]
@@ -480,10 +498,21 @@ def inspect_month(db: Session, month: str, stats: dict | None = None) -> list[di
     for t in txs:
         seen[(t.date, t.amount_cents, merchant_key(t.label))].append(t)
     for (d, amt, key), group in seen.items():
-        if len(group) > 1 and amt < 0:
+        # ignore les petites sommes (cafés…) et les prélèvements à références différentes (2 contrats)
+        if len(group) > 1 and amt <= -500 and not _distinct_refs(group):
             alerts.append({"level": "warn", "title": "Doublon possible",
                            "detail": f"{len(group)}× {-amt / 100:.2f} € chez {key or group[0].label} le {d:%d/%m}",
                            "url": f"/transactions?month={month}&q={key}"})
+    _, month_end = month_bounds(month)
+    at = min(month_end, date.today())
+    for acc in db.scalars(select(Account).where(Account.archived.is_(False), Account.kind != "carte")):
+        bal = account_balance(db, acc, at)
+        if bal < 0:
+            yearly = -bal * 0.166  # taux débiteur usuel ~16,6 %
+            alerts.append({"level": "bad", "title": f"{acc.name} à découvert ({bal / 100:.2f} €)",
+                           "detail": f"Un découvert permanent de ce niveau coûte ≈ {yearly / 100:.0f} € d'agios par an "
+                                     f"(+ frais d'incidents). Un apport ponctuel de {-bal / 100:.0f} € l'éteint.",
+                           "url": f"/transactions?account={acc.id}"})
     if stats["uncategorized"]:
         alerts.append({"level": "info", "title": f"{stats['uncategorized']} opération(s) à catégoriser",
                        "detail": "Plus le tri est complet, plus le bilan est juste.", "url": "/inbox"})
@@ -498,6 +527,20 @@ def inspect_month(db: Session, month: str, stats: dict | None = None) -> list[di
                        "url": "/pending"})
     alerts.extend(detect_subscriptions(db, month))
     return alerts
+
+
+def _complete(stats: dict) -> bool:
+    """Le mois a-t-il des opérations du début à la fin (relevés importés sur tout le mois) ?"""
+    days = [t.date.day for t in stats["transactions"]]
+    if len(days) < 10:
+        return False
+    _, end = month_bounds(stats["month"])
+    return min(days) <= 7 and max(days) >= end.day - 6
+
+
+def _distinct_refs(group) -> bool:
+    """Deux prélèvements identiques le même jour mais avec des références différentes (2 contrats) ≠ doublon."""
+    return len({t.label for t in group}) == len(group)
 
 
 def detect_subscriptions(db: Session, month: str) -> list[dict]:
@@ -538,3 +581,17 @@ def save_attachment(db: Session, upload, data: bytes, **links) -> Attachment:
     a = Attachment(filename=upload.filename[:200], stored_name=stored, mime=mime, size=len(data), **links)
     db.add(a)
     return a
+
+
+def recategorize_all(db: Session) -> int:
+    """Relance le rangement automatique sur tout ce qui n'a pas été rangé à la main."""
+    keep = ("manuel", "achat en attente", "règlement carte", "paiement en plusieurs fois")
+    n = 0
+    for tx in db.scalars(select(Transaction).where(Transaction.auto_source.not_in(keep))):
+        tx.category_id = tx.person_id = tx.loan_id = tx.insurance_id = tx.recurrence_id = None
+        tx.scope, tx.jems_status, tx.categorized, tx.auto_source = "famille", None, False, ""
+        tx.tags = []
+        db.flush()
+        apply_auto(db, tx)
+        n += tx.categorized
+    return n

@@ -39,9 +39,18 @@ Déploiement prévu : **https://wazzzxpense.walautao.fr** sur un VPS IONOS.
 | **Budgets** mensuels par catégorie avec jauges | *Plus › Budgets* |
 | **Notes de frais Jems** : à déclarer → déclarée → remboursée, export ZIP (CSV + justificatifs renommés) | *Plus › Notes de frais Jems* |
 | **Factures / justificatifs** (photo ou PDF) sur opérations, achats, crédits, assurances | partout, *Plus › Factures* |
+| **Recherche** par mot (sans accents), montant (`42,50`, `>100`, `50-100`), date (`12/03`, `03/2026`), période, tri | *Opérations* |
+| Comptes joints / perso / carte, « pour qui » et périmètre par défaut par compte, alerte découvert + coût des agios | *Paramètres*, Accueil, Bilan |
+| **Profil du foyer** (JSON) : personnes, comptes, catégories, règles, crédits, assurances, récurrences en un import | *Paramètres › Profil* |
 | Export CSV, **sauvegarde ZIP** complète | *Opérations*, *Paramètres* |
 
 ### Formats de relevés
+
+- **PDF Crédit Agricole** : lus **directement sur le serveur, sans IA** (rien ne sort de votre VPS). Le compte est
+  reconnu par son numéro (créé automatiquement au 1er import, solde de départ repris du relevé), la carte à **débit
+  différé** est importée achat par achat sur un compte « carte » (le prélèvement mensuel « Dépenses Carte » devient
+  un virement interne : rien n'est compté deux fois), et les totaux sont comparés à ceux de la banque.
+  Plusieurs relevés peuvent être déposés d'un coup.
 
 - **CSV** : détection automatique des colonnes (Date / Libellé / Montant, ou Débit + Crédit), séparateurs `;` `,`
   tabulation, encodages UTF-8 et Windows. Testé sur les formats type Crédit Agricole, Boursorama et génériques.

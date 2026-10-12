@@ -4,7 +4,7 @@ from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..config import UPLOAD_DIR
@@ -14,8 +14,9 @@ from ..services import (
     account_balance, add_tags, apply_auto, inspect_month, link_pending, match_pending_to_existing, month_stats,
     pending_total, similar_uncategorized, upcoming,
 )
+from ..search import SORTS, apply_search
 from ..templating import redirect, render
-from ..utils import current_month, merchant_key, month_bounds, norm
+from ..utils import current_month, merchant_key, month_bounds
 from .common import fcents, fdate, fint, lookups, save_uploads
 
 router = APIRouter()
@@ -26,12 +27,17 @@ router = APIRouter()
 @router.get("/")
 def dashboard(request: Request, db: Session = Depends(get_db)):
     month = current_month()
+    start, _ = month_bounds(month)
+    if not db.scalar(select(Transaction.id).where(Transaction.date >= start).limit(1)):
+        last = db.scalar(select(func.max(Transaction.date)))  # relevés pas encore importés : dernier mois connu
+        if last:
+            month = last.strftime("%Y-%m")
     accounts = db.scalars(select(Account).where(Account.archived.is_(False))).all()
     balances = [(a, account_balance(db, a)) for a in accounts]
     total = sum(b for _, b in balances)
     pend = pending_total(db)
     today = date.today()
-    _, month_end = month_bounds(month)
+    _, month_end = month_bounds(current_month())
     to_month_end = upcoming(db, today, month_end)
     next30 = upcoming(db, today, today + timedelta(days=30))
     stats = month_stats(db, month)
@@ -53,10 +59,8 @@ def transactions(request: Request, db: Session = Depends(get_db)):
     if month:
         start, end = month_bounds(month)
         q = q.where(Transaction.date.between(start, end))
-    if p.get("q"):
-        words = norm(p["q"]).split()
-        for w in words:
-            q = q.where(or_(func.upper(Transaction.label).contains(w), func.upper(Transaction.note).contains(w)))
+    q = apply_search(q, p.get("q", ""), amin=_abs_cents(p.get("amin")), amax=_abs_cents(p.get("amax")),
+                     dfrom=fdate(p.get("from")), dto=fdate(p.get("to")))
     cat = p.get("category")
     if cat == "0":
         q = q.where(Transaction.category_id.is_(None))
@@ -74,13 +78,18 @@ def transactions(request: Request, db: Session = Depends(get_db)):
         q = q.where(Transaction.amount_cents < 0)
     elif p.get("dir") == "in":
         q = q.where(Transaction.amount_cents > 0)
-    rows = db.scalars(q.order_by(Transaction.date.desc(), Transaction.id.desc())).all()
+    rows = db.scalars(q.order_by(*SORTS.get(p.get("sort", ""), SORTS[""]))).all()
     out = -sum(t.amount_cents for t in rows if t.amount_cents < 0)
     inc = sum(t.amount_cents for t in rows if t.amount_cents > 0)
     limit = fint(p.get("limit")) or 200
     filters = {k: v for k, v in p.items() if v and k != "limit"}
     return render(request, db, "transactions.html", rows=rows[:limit], total_count=len(rows), out=out, inc=inc,
                   filters=filters, limit=limit, month=month, **lookups(db))
+
+
+def _abs_cents(v):
+    c = fcents(v)
+    return abs(c) if c is not None else None
 
 
 @router.get("/transactions/{tx_id}")

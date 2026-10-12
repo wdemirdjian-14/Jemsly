@@ -1,5 +1,6 @@
 """Paramètres : comptes, catégories, personnes, règles, sauvegarde."""
 import io
+import json
 import sqlite3
 import tempfile
 import zipfile
@@ -16,7 +17,8 @@ from ..db import get_db
 from ..models import (
     Account, Category, InstallmentPlan, Insurance, Pending, Person, Recurrence, Rule, Transaction,
 )
-from ..services import account_balance, apply_auto
+from ..profile import apply_profile
+from ..services import account_balance, apply_auto, recategorize_all
 from ..templating import redirect, render
 from .common import fcents, fdate, fint, lookups
 
@@ -56,6 +58,10 @@ async def account_save(request: Request, db: Session = Depends(get_db)):
     acc.initial_balance_cents = fcents(f.get("initial_balance"), 0)
     acc.initial_date = fdate(f.get("initial_date"), date(2000, 1, 1))
     acc.archived = bool(f.get("archived"))
+    acc.number = f.get("number", acc.number or "").strip()
+    acc.kind = f.get("kind") or acc.kind or "courant"
+    acc.default_scope = f.get("default_scope", "")
+    acc.default_person_id = fint(f.get("default_person_id"))
     db.add(acc)
     db.commit()
     return redirect(request, "/settings#comptes", "Compte enregistré.")
@@ -114,9 +120,33 @@ async def rule_save(request: Request, db: Session = Depends(get_db)):
     r.scope = f.get("scope") or None
     r.tags = f.get("tags", "").strip()
     r.priority = fint(f.get("priority")) or 100
+    r.max_cents = abs(fcents(f.get("max_amount"))) if fcents(f.get("max_amount")) else None
     db.add(r)
     db.commit()
     return redirect(request, "/settings#regles", "Règle enregistrée.")
+
+
+@router.post("/settings/profile")
+async def profile_import(request: Request, db: Session = Depends(get_db)):
+    f = await request.form()
+    up = f.get("file")
+    if not getattr(up, "filename", None):
+        return redirect(request, "/settings#profil", "Choisissez le fichier profil (.json).")
+    try:
+        data = json.loads((await up.read()).decode("utf-8"))
+        stats = apply_profile(db, data)
+    except (ValueError, KeyError, TypeError) as e:
+        db.rollback()
+        return redirect(request, "/settings#profil", f"Profil invalide : {e}")
+    db.commit()
+    return redirect(request, "/settings#profil", "Profil appliqué : " + ", ".join(f"{v} {k}" for k, v in stats.items()))
+
+
+@router.post("/settings/recategorize")
+def recategorize(request: Request, db: Session = Depends(get_db)):
+    n = recategorize_all(db)
+    db.commit()
+    return redirect(request, "/inbox", f"{n} opération(s) rangée(s) automatiquement.")
 
 
 @router.post("/settings/reapply")

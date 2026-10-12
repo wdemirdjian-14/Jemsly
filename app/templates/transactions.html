@@ -4,7 +4,22 @@
 {% block topright %}<a href="/manual" class="btn small ghost">+ Saisir</a>{% endblock %}
 {% block content %}
 <form method="get" action="/transactions" data-autosubmit>
-  <input type="search" name="q" value="{{ filters.q or '' }}" placeholder="🔍 Rechercher (ex : axa, amazon…)" style="margin-bottom:8px">
+  <input type="search" name="q" value="{{ filters.q or '' }}" placeholder="🔍 axa · 42,50 · >100 · 12/03 · 03/2026" style="margin-bottom:8px" enterkeyhint="search">
+  <details style="margin-bottom:8px" {{ 'open' if filters.amin or filters.amax or filters['from'] or filters.to or filters.sort }}>
+    <summary class="sub">⚙️ Plus de critères (montant, période, tri)</summary>
+    <div class="grid2" style="margin-top:6px">
+      <div><label>Montant min (€)</label><input name="amin" inputmode="decimal" value="{{ filters.amin or '' }}"></div>
+      <div><label>Montant max (€)</label><input name="amax" inputmode="decimal" value="{{ filters.amax or '' }}"></div>
+      <div><label>Du</label><input type="date" name="from" value="{{ filters['from'] or '' }}"></div>
+      <div><label>Au</label><input type="date" name="to" value="{{ filters.to or '' }}"></div>
+    </div>
+    <label>Trier par</label>
+    <select name="sort">
+      {% for k, v in [('', 'Date (récentes d\'abord)'), ('date_asc', 'Date (anciennes d\'abord)'), ('amount_desc', 'Montant (plus gros d\'abord)'), ('amount_asc', 'Montant (plus petits d\'abord)')] %}
+      <option value="{{ k }}" {{ 'selected' if (filters.sort or '') == k }}>{{ v }}</option>{% endfor %}
+    </select>
+    <p class="sub" style="margin:6px 0 0">Dans la barre : <b>axa</b> (mot), <b>42,50</b> (montant exact), <b>&gt;100</b> / <b>&lt;20</b> / <b>50-100</b> (montants), <b>12/03</b> (jour), <b>03/2026</b> (mois). Combinable : <b>axa &gt;50</b>.</p>
+  </details>
   <div class="filters">
     <input type="month" name="month" value="{{ month }}">
     <select name="category">

@@ -68,8 +68,8 @@ def forecast(request: Request, db: Session = Depends(get_db)):
 @router.get("/loans")
 def loans(request: Request, db: Session = Depends(get_db)):
     rows = [(l, loan_status(l)) for l in db.scalars(select(Loan).order_by(Loan.active.desc(), Loan.name))]
-    total_remaining = sum(s["remaining_cents"] for l, s in rows if l.active)
-    monthly = sum(l.monthly_cents for l, s in rows if l.active and s["remaining_count"] > 0)
+    total_remaining = sum(s["remaining_cents"] or 0 for l, s in rows if l.active)
+    monthly = sum(l.monthly_cents for l, s in rows if l.active and (s["remaining_count"] is None or s["remaining_count"] > 0))
     return render(request, db, "loans.html", rows=rows, total_remaining=total_remaining, monthly=monthly,
                   kinds=LOAN_KINDS)
 
@@ -104,7 +104,7 @@ async def loan_save(request: Request, lid: int | None = None, db: Session = Depe
     loan.monthly_cents = abs(fcents(f.get("monthly"), 0))
     loan.insurance_cents = abs(fcents(f.get("insurance"), 0))
     loan.start_date = fdate(f.get("start_date"), date.today())
-    loan.duration_months = fint(f.get("duration_months")) or 12
+    loan.duration_months = fint(f.get("duration_months")) or 0
     loan.match_pattern = f.get("match_pattern", "").strip()
     loan.notes = f.get("notes", "").strip()
     loan.active = bool(f.get("active")) or not lid

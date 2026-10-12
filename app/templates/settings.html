@@ -15,6 +15,14 @@
       <div><label>Solde au</label><input type="date" name="initial_date" value="{{ a.initial_date.isoformat() }}"></div>
       <div><label>Solde de départ</label><input name="initial_balance" inputmode="decimal" value="{{ a.initial_balance_cents|eur }}"></div>
     </div>
+    <div class="grid2">
+      <div><label>Type</label><select name="kind">{% for k, l in [('courant','Courant'),('joint','Joint'),('carte','Carte débit différé'),('epargne','Épargne')] %}<option value="{{ k }}" {{ 'selected' if a.kind == k }}>{{ l }}</option>{% endfor %}</select></div>
+      <div><label>N° de compte / carte</label><input name="number" value="{{ a.number }}"></div>
+      <div><label>Pour qui (par défaut)</label>
+        <select name="default_person_id"><option value="">—</option>{% for p in persons %}<option value="{{ p.id }}" {{ 'selected' if a.default_person_id == p.id }}>{{ p.name }}</option>{% endfor %}</select></div>
+      <div><label>Périmètre (par défaut)</label>
+        <select name="default_scope"><option value="">—</option>{% for k, v in SCOPES.items() %}<option value="{{ k }}" {{ 'selected' if a.default_scope == k }}>{{ v.split(' ')[0] }}</option>{% endfor %}</select></div>
+    </div>
     <p class="sub">Le solde de départ est celui du début de la journée indiquée ; les opérations antérieures sont ignorées dans le calcul du solde. Astuce : après un import, le bouton « recaler le solde » le règle automatiquement.</p>
     <label class="check"><input type="checkbox" name="archived" value="1" {{ 'checked' if a.archived }}> Archivé</label>
     <button class="btn small" type="submit">Enregistrer</button>
@@ -86,6 +94,7 @@
       <div><label>Sens</label><select name="direction">{% for k, l in [('tous','Tous'),('debit','Débits'),('credit','Crédits')] %}<option value="{{ k }}" {{ 'selected' if r.direction == k }}>{{ l }}</option>{% endfor %}</select></div>
       <div><label>Priorité</label><input name="priority" inputmode="numeric" value="{{ r.priority }}"></div>
     </div>
+    <label>Seulement si le montant est ≤ (€, facultatif)</label><input name="max_amount" inputmode="decimal" value="{{ r.max_cents|eur }}">
     <label>Catégorie</label>{{ m.category_select(categories, r.category_id) }}
     <label>Pour qui</label>{{ m.person_select(persons, r.person_id, '— Inchangé —') }}
     <label>Périmètre</label>
@@ -110,6 +119,19 @@
     <button class="btn small" type="submit" style="margin-top:12px">Créer</button>
   </form>
 </details>
+
+<h2 id="profil">Profil du foyer</h2>
+<div class="card">
+  <p style="margin-top:0">Importez un fichier profil (.json) : personnes, comptes, catégories, règles, crédits, assurances et
+    récurrences sont créés ou mis à jour, puis toutes les opérations sont re-rangées (vos choix manuels sont conservés).</p>
+  <form method="post" action="/settings/profile" enctype="multipart/form-data">
+    <input type="file" name="file" accept=".json,application/json" required>
+    <button class="btn small" type="submit" style="margin-top:8px">Appliquer le profil</button>
+  </form>
+  <form method="post" action="/settings/recategorize" style="margin-top:8px">
+    <button class="btn small ghost" name="x" value="1">↻ Re-ranger toutes les opérations automatiques</button>
+  </form>
+</div>
 
 <h2>Sauvegarde</h2>
 <div class="card">

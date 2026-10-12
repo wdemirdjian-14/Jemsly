@@ -5,13 +5,17 @@
 {% block content %}
 {% if loan %}
 <div class="card">
+  {% if status.count %}
   <div class="grid2">
-    <div><div class="sub">Capital restant dû</div><div class="amt" style="font-size:22px">{{ status.remaining_cents|money }}</div></div>
+    <div><div class="sub">Capital restant dû</div><div class="amt" style="font-size:22px">{{ status.remaining_cents|money if status.remaining_cents is not none else 'à compléter' }}</div></div>
     <div><div class="sub">Fin du crédit</div><div class="amt" style="font-size:22px">{{ status.end_date.strftime('%m/%Y') }}</div></div>
   </div>
   <div class="bar" style="margin-top:12px"><span style="width:{{ status.progress }}%"></span></div>
   <div class="sub">{{ status.paid_count }}/{{ status.count }} échéances · {{ status.remaining_count }} restantes ({{ status.remaining_payments_cents|money }})
     {% if status.interest_cents %} · coût total des intérêts {{ status.interest_cents|money }}{% endif %}</div>
+  {% else %}
+  <div class="alert warn" style="margin:0"><b>À compléter</b>Renseignez le montant emprunté, le taux, la 1re échéance et la durée (tableau d'amortissement) pour voir le capital restant dû et la date de fin.</div>
+  {% endif %}
   {% if txs %}<a class="sub" href="/transactions?loan={{ loan.id }}">Voir les {{ txs|length }} mensualité(s) retrouvée(s) sur le compte →</a>{% endif %}
   {{ m.attachments(docs, '/loans/' ~ loan.id) }}
 </div>
@@ -26,7 +30,7 @@
     <div><label>Mensualité totale</label><input name="monthly" inputmode="decimal" value="{{ loan.monthly_cents|eur if loan }}" required></div>
     <div><label>dont assurance</label><input name="insurance" inputmode="decimal" value="{{ loan.insurance_cents|eur if loan }}"></div>
     <div><label>1re échéance</label><input type="date" name="start_date" value="{{ loan.start_date.isoformat() if loan else today.isoformat() }}"></div>
-    <div><label>Durée (mois)</label><input name="duration_months" inputmode="numeric" value="{{ loan.duration_months if loan else 12 }}"></div>
+    <div><label>Durée (mois)</label><input name="duration_months" inputmode="numeric" value="{{ loan.duration_months if loan and loan.duration_months else '' }}" placeholder="inconnue"></div>
   </div>
   <label>Mot du libellé bancaire <span class="sub">(pour retrouver les prélèvements, ex : CETELEM)</span></label>
   <input name="match_pattern" value="{{ loan.match_pattern if loan }}">

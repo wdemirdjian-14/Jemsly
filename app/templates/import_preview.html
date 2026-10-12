@@ -5,6 +5,12 @@
 {% block content %}
 <div class="card">
   <div class="sub">{{ batch.filename }} → {{ batch.account.name }}</div>
+  {% for sec in meta.get('sections', []) %}
+  <div style="margin-top:6px">{{ '✅' if sec.check else '⚠️' }} {{ sec.account }} : {{ sec.count }} opération(s)
+    {% if sec.check %}<span class="sub">— totaux identiques à ceux de la banque</span>
+    {% else %}<span class="sub" style="color:var(--warn)">— écart avec les totaux du relevé (débits {{ sec.debit|money }} / {{ (sec.expected_debit or 0)|money }}), vérifiez l'aperçu</span>{% endif %}
+  </div>
+  {% endfor %}
   {% if batch.statement_balance_cents is not none %}
   <div style="margin-top:6px">Solde indiqué par la banque{% if batch.statement_date %} au {{ batch.statement_date|d }}{% endif %} : <b>{{ batch.statement_balance_cents|money }}</b></div>
   {% endif %}
@@ -21,7 +27,7 @@
       <li>
         <input type="checkbox" name="row" value="{{ loop.index0 }}" {{ 'checked' if not r.status }}>
         <div class="grow"><div class="ell">{{ r.label }}</div>
-          <div class="sub">{{ r.date[8:10] }}/{{ r.date[5:7] }}/{{ r.date[:4] }}{% if r.status %} · <span style="color:var(--warn)">{{ r.status }}</span>{% endif %}</div></div>
+          <div class="sub">{{ r.date[8:10] }}/{{ r.date[5:7] }}/{{ r.date[:4] }}{% if meta.get('sections', [])|length > 1 %} · {{ names.get(r.acct, '') }}{% endif %}{% if r.status %} · <span style="color:var(--warn)">{{ r.status }}</span>{% endif %}</div></div>
         <div class="amt {{ 'pos' if r.amount_cents > 0 }}">{{ r.amount_cents|smoney }}</div>
       </li>
       {% endfor %}

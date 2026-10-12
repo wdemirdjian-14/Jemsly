@@ -3,13 +3,19 @@
 {% block heading %}Importer un relevé{% endblock %}
 {% block content %}
 <form method="post" action="/import" enctype="multipart/form-data" class="card">
+  <label>Relevé(s)</label>
+  <input type="file" name="files" accept=".csv,.ofx,.qfx,.txt,.pdf,application/pdf" multiple required>
   <label>Compte</label>
-  <select name="account_id">{% for a in accounts %}<option value="{{ a.id }}">{{ a.name }}{% if a.bank %} ({{ a.bank }}){% endif %}</option>{% endfor %}</select>
-  <label>Fichier du relevé</label>
-  <input type="file" name="file" accept=".csv,.ofx,.qfx,.txt,.pdf{% if ai_enabled %},application/pdf{% endif %}" required>
-  <p class="sub">Formats : <b>CSV</b> et <b>OFX</b> (export depuis l'espace client de votre banque, le plus fiable){% if ai_enabled %}, ou <b>PDF</b> du relevé mensuel (lu par l'IA, vérifiez l'aperçu){% endif %}.
-    Les doublons sont détectés : vous pouvez réimporter sans risque des périodes qui se chevauchent.</p>
-  <button class="btn block" type="submit">Analyser le fichier</button>
+  <select name="account_id">
+    <option value="">Détection automatique (relevés PDF Crédit Agricole)</option>
+    {% for a in accounts %}<option value="{{ a.id }}">{{ a.name }}{% if a.bank %} ({{ a.bank }}){% endif %}</option>{% endfor %}
+  </select>
+  <p class="sub"><b>PDF Crédit Agricole</b> : lus directement sur votre serveur (rien n'est envoyé à l'extérieur) ; compte reconnu
+    par son numéro, détail de la carte à débit différé importé achat par achat, totaux vérifiés avec ceux de la banque.
+    Vous pouvez déposer <b>plusieurs relevés d'un coup</b>.<br>
+    <b>CSV / OFX</b> : choisissez le compte.{% if ai_enabled %} Autres PDF : lus par l'IA (vérifiez l'aperçu).{% endif %}
+    Les doublons sont détectés : réimporter une période est sans risque.</p>
+  <button class="btn block" type="submit">Importer</button>
 </form>
 
 <h2>Historique</h2>

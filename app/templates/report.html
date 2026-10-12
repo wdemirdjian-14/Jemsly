@@ -74,6 +74,14 @@
   </div>
 </div>
 
+{% if stats.jems_total or stats.jems_reimbursed %}
+<h2>Jems (hors budget du foyer)</h2>
+<a class="card" href="/jems?month={{ month }}" style="display:flex;justify-content:space-between;color:inherit">
+  <span>Avancé {{ stats.jems_total|money }}<br><span class="sub">{{ stats.jems_todo }} à déclarer</span></span>
+  <span class="right">Remboursé<br><b class="pos">{{ stats.jems_reimbursed|money }}</b></span>
+</a>
+{% endif %}
+
 <h2>Top marchands</h2>
 <div class="card flush"><ul class="list">
   {% for name, v in stats.merchants %}
