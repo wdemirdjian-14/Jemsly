@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block back %}<a class="back" href="/more">‹</a>{% endblock %}
+{% block heading %}Budgets{% endblock %}
+{% block content %}
+{{ m.monthnav(month, '/budget?') }}
+<div class="grid2">
+  <div class="stat"><div class="l">Dépensé</div><div class="v">{{ total_spent|money }}</div></div>
+  <div class="stat"><div class="l">Budgets définis</div><div class="v">{{ total_budget|money }}</div></div>
+</div>
+
+<h2>Budget mensuel par catégorie</h2>
+<form method="post" action="/budget" class="card">
+  <input type="hidden" name="month" value="{{ month }}">
+  {% for c in cats %}
+  {% set s = spent.get(c.id, 0) %}
+  <div style="margin-bottom:14px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span class="grow ell">{{ c.icon }} {{ c.name }}<br><span class="sub">dépensé {{ s|money }}</span></span>
+      <input name="b{{ c.id }}" value="{{ c.budget_cents|eur }}" inputmode="decimal" placeholder="—" style="width:110px;text-align:right">
+    </div>
+    {% if c.budget_cents %}{{ m.budget_bar(s, c.budget_cents) }}{% endif %}
+  </div>
+  {% endfor %}
+  <button class="btn block" type="submit">Enregistrer les budgets</button>
+</form>
+
+<h2>Provisions</h2>
+<div class="card">
+  {% if provisions %}
+  <p style="margin-top:0">À mettre de côté chaque mois : <b>{{ provision_monthly|money }}</b></p>
+  {% for p in provisions %}
+  <a href="{{ p.url }}" style="display:flex;justify-content:space-between;color:inherit;padding:6px 0;border-bottom:1px solid var(--line)">
+    <span class="ell">🐷 {{ p.label }}<br><span class="sub">{{ p.amount|money }} le {{ p.due|d }}</span></span>
+    <span class="amt">{{ p.monthly|money }}/mois</span>
+  </a>
+  {% endfor %}
+  {% else %}
+  <p class="sub" style="margin:0">Ajoutez vos grosses dépenses annuelles (taxe foncière, assurance auto annuelle, rentrée…) comme <a href="/recurrences/new">récurrence « provision »</a> : l'app calcule combien mettre de côté chaque mois.</p>
+  {% endif %}
+</div>
+{% endblock %}

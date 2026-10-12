@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block back %}<a class="back" href="/import">‹</a>{% endblock %}
+{% block heading %}{{ 'Aperçu' if batch.status == 'preview' else 'Import terminé' }}{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="sub">{{ batch.filename }} → {{ batch.account.name }}</div>
+  {% if batch.statement_balance_cents is not none %}
+  <div style="margin-top:6px">Solde indiqué par la banque{% if batch.statement_date %} au {{ batch.statement_date|d }}{% endif %} : <b>{{ batch.statement_balance_cents|money }}</b></div>
+  {% endif %}
+</div>
+
+{% if batch.status == 'preview' %}
+{% set new = rows|selectattr('status', 'equalto', '')|list %}
+<p class="sub">{{ rows|length }} opération(s) lue(s), dont <b>{{ new|length }}</b> nouvelle(s). Les doublons sont décochés.</p>
+<form method="post" action="/import/{{ batch.id }}/confirm">
+  <div class="card flush">
+    <label class="check row" style="margin:0"><input type="checkbox" data-check-all="row" checked> Tout cocher</label>
+    <ul class="list">
+      {% for r in rows %}
+      <li>
+        <input type="checkbox" name="row" value="{{ loop.index0 }}" {{ 'checked' if not r.status }}>
+        <div class="grow"><div class="ell">{{ r.label }}</div>
+          <div class="sub">{{ r.date[8:10] }}/{{ r.date[5:7] }}/{{ r.date[:4] }}{% if r.status %} · <span style="color:var(--warn)">{{ r.status }}</span>{% endif %}</div></div>
+        <div class="amt {{ 'pos' if r.amount_cents > 0 }}">{{ r.amount_cents|smoney }}</div>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  <button class="btn block" type="submit">Importer la sélection</button>
+</form>
+<form method="post" action="/import/{{ batch.id }}/undo" style="text-align:center;margin-top:12px">
+  <button class="btn small ghost" name="x" value="1">Abandonner</button>
+</form>
+
+{% else %}
+<div class="grid3">
+  <div class="stat"><div class="l">Importées</div><div class="v">{{ batch.imported }}</div></div>
+  <div class="stat"><div class="l">Rangées auto</div><div class="v pos">{{ auto }}</div></div>
+  <div class="stat"><div class="l">Ignorées</div><div class="v">{{ batch.duplicates }}</div></div>
+</div>
+{% if from_pending %}<div class="alert info" style="margin-top:12px"><b>⏳ {{ from_pending }} achat(s) en attente retrouvé(s)</b>Ils ont été rangés avec leurs infos et factures.</div>{% endif %}
+
+{% if check %}
+<div class="card" style="margin-top:12px">
+  <h3>Contrôle du solde</h3>
+  {% if check.diff == 0 %}
+  <div class="alert info" style="margin:0"><b>✓ Solde cohérent</b>Le solde calculé correspond exactement au relevé ({{ check.bank|money }}).</div>
+  {% else %}
+  <div class="alert warn" style="margin:0"><b>Écart de {{ check.diff|smoney }}</b>
+    Banque : {{ check.bank|money }} · calculé : {{ check.computed|money }}.
+    Normal au 1er import (solde de départ inconnu) ; sinon, une opération manque ou est en double.</div>
+  <form method="post" action="/import/{{ batch.id }}/align-balance" style="margin-top:8px">
+    <button class="btn small ghost" name="x" value="1">Recaler le solde du compte sur la banque</button>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="actions">
+  <a class="btn" href="/inbox">📥 Trier le reste ({{ nav_inbox }})</a>
+  <a class="btn ghost" href="/report">📊 Bilan du mois</a>
+</div>
+<h2>Opérations importées</h2>
+<div class="card flush"><ul class="list">{% for t in txs %}{{ m.tx_row(t, '/import/' ~ batch.id) }}{% endfor %}</ul></div>
+<form method="post" action="/import/{{ batch.id }}/undo" style="text-align:center;margin-top:16px">
+  <button class="btn small danger" name="x" value="1" data-confirm="Supprimer toutes les opérations de cet import ?">Annuler cet import</button>
+</form>
+{% endif %}
+{% endblock %}

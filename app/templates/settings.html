@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block back %}<a class="back" href="/more">‹</a>{% endblock %}
+{% block heading %}Paramètres{% endblock %}
+{% block content %}
+<h2 id="comptes">Comptes bancaires</h2>
+{% for a, bal in all_accounts %}
+<details class="card">
+  <summary style="display:flex;justify-content:space-between"><span>🏦 {{ a.name }} {% if a.archived %}<span class="chip grey">archivé</span>{% endif %}</span><b>{{ bal|money }}</b></summary>
+  <form method="post" action="/settings/accounts">
+    <input type="hidden" name="id" value="{{ a.id }}">
+    <div class="grid2">
+      <div><label>Nom</label><input name="name" value="{{ a.name }}"></div>
+      <div><label>Banque</label><input name="bank" value="{{ a.bank }}"></div>
+      <div><label>Solde au</label><input type="date" name="initial_date" value="{{ a.initial_date.isoformat() }}"></div>
+      <div><label>Solde de départ</label><input name="initial_balance" inputmode="decimal" value="{{ a.initial_balance_cents|eur }}"></div>
+    </div>
+    <p class="sub">Le solde de départ est celui du début de la journée indiquée ; les opérations antérieures sont ignorées dans le calcul du solde. Astuce : après un import, le bouton « recaler le solde » le règle automatiquement.</p>
+    <label class="check"><input type="checkbox" name="archived" value="1" {{ 'checked' if a.archived }}> Archivé</label>
+    <button class="btn small" type="submit">Enregistrer</button>
+  </form>
+</details>
+{% endfor %}
+<details class="card"><summary><b>+ Ajouter un compte</b></summary>
+  <form method="post" action="/settings/accounts">
+    <div class="grid2">
+      <div><label>Nom</label><input name="name" placeholder="ex : Compte joint" required></div>
+      <div><label>Banque</label><input name="bank"></div>
+      <div><label>Solde au</label><input type="date" name="initial_date" value="{{ today.isoformat() }}"></div>
+      <div><label>Solde de départ</label><input name="initial_balance" inputmode="decimal" value="0"></div>
+    </div>
+    <button class="btn small" type="submit" style="margin-top:12px">Créer</button>
+  </form>
+</details>
+
+<h2 id="personnes">Personnes</h2>
+<div class="card">
+  {% for p in persons %}
+  <form method="post" action="/settings/persons" style="display:flex;gap:8px;margin-bottom:8px">
+    <input type="hidden" name="id" value="{{ p.id }}">
+    <input name="name" value="{{ p.name }}">
+    <select name="role" style="width:130px">{% for r, l in [('moi','Moi'),('conjoint','Conjoint'),('enfant','Enfant'),('famille','Famille')] %}<option value="{{ r }}" {{ 'selected' if p.role == r }}>{{ l }}</option>{% endfor %}</select>
+    <button class="btn small ghost" type="submit">✓</button>
+    <button class="btn small danger" name="action" value="delete" data-confirm="Supprimer {{ p.name }} ?">✕</button>
+  </form>
+  {% endfor %}
+  <form method="post" action="/settings/persons" style="display:flex;gap:8px">
+    <input name="name" placeholder="ex : Léo" required>
+    <select name="role" style="width:130px"><option value="enfant">Enfant</option><option value="conjoint">Conjoint</option><option value="moi">Moi</option><option value="famille">Famille</option></select>
+    <button class="btn small" type="submit">+</button>
+  </form>
+  <p class="sub">Conseil : une ligne par enfant pour suivre ce que chacun coûte.</p>
+</div>
+
+<h2 id="categories">Catégories</h2>
+<div class="card">
+  {% for c in categories %}
+  <form method="post" action="/settings/categories" style="display:flex;gap:6px;margin-bottom:8px">
+    <input type="hidden" name="id" value="{{ c.id }}">
+    <input name="icon" value="{{ c.icon }}" style="width:52px;text-align:center">
+    <input name="name" value="{{ c.name }}">
+    <select name="kind" style="width:110px">{% for k, l in [('depense','Dépense'),('revenu','Revenu'),('virement','Virement')] %}<option value="{{ k }}" {{ 'selected' if c.kind == k }}>{{ l }}</option>{% endfor %}</select>
+    <button class="btn small ghost" type="submit">✓</button>
+    <button class="btn small danger" name="action" value="delete" data-confirm="Supprimer la catégorie {{ c.name }} ?">✕</button>
+  </form>
+  {% endfor %}
+  <form method="post" action="/settings/categories" style="display:flex;gap:6px">
+    <input name="icon" placeholder="🙂" style="width:52px;text-align:center">
+    <input name="name" placeholder="Nouvelle catégorie" required>
+    <select name="kind" style="width:110px"><option value="depense">Dépense</option><option value="revenu">Revenu</option><option value="virement">Virement</option></select>
+    <button class="btn small" type="submit">+</button>
+  </form>
+  <p class="sub">« Virement » = mouvements entre vos comptes / vers l'épargne : ils sont exclus des entrées-sorties du bilan.</p>
+</div>
+
+<h2 id="regles">Règles de catégorisation</h2>
+<p class="sub">Si le libellé bancaire contient le motif (plusieurs motifs séparés par « | »), l'opération est rangée automatiquement. Les règles sont aussi créées depuis l'écran « À trier ».</p>
+{% for r in rules %}
+<details class="card">
+  <summary style="display:flex;justify-content:space-between;gap:8px"><span class="ell"><b>{{ r.pattern }}</b></span>
+    <span class="sub" style="white-space:nowrap">→ {{ r.category.name if r.category else '—' }} · {{ r.hits }}×</span></summary>
+  <form method="post" action="/settings/rules">
+    <input type="hidden" name="id" value="{{ r.id }}">
+    <label>Motif</label><input name="pattern" value="{{ r.pattern }}">
+    <div class="grid2">
+      <div><label>Sens</label><select name="direction">{% for k, l in [('tous','Tous'),('debit','Débits'),('credit','Crédits')] %}<option value="{{ k }}" {{ 'selected' if r.direction == k }}>{{ l }}</option>{% endfor %}</select></div>
+      <div><label>Priorité</label><input name="priority" inputmode="numeric" value="{{ r.priority }}"></div>
+    </div>
+    <label>Catégorie</label>{{ m.category_select(categories, r.category_id) }}
+    <label>Pour qui</label>{{ m.person_select(persons, r.person_id, '— Inchangé —') }}
+    <label>Périmètre</label>
+    <select name="scope"><option value="">— Inchangé —</option>{% for k, v in SCOPES.items() %}<option value="{{ k }}" {{ 'selected' if r.scope == k }}>{{ v }}</option>{% endfor %}</select>
+    <label>Tags</label><input name="tags" value="{{ r.tags }}">
+    <div class="actions">
+      <button class="btn small" type="submit">Enregistrer</button>
+      <button class="btn small danger" name="action" value="delete" data-confirm="Supprimer cette règle ?">Supprimer</button>
+    </div>
+  </form>
+</details>
+{% endfor %}
+<details class="card"><summary><b>+ Nouvelle règle</b></summary>
+  <form method="post" action="/settings/rules">
+    <label>Motif</label><input name="pattern" placeholder="ex : AXA|MAAF" required>
+    <label>Catégorie</label>{{ m.category_select(categories) }}
+    <label>Pour qui</label>{{ m.person_select(persons, None, '— Inchangé —') }}
+    <label>Périmètre</label>
+    <select name="scope"><option value="">— Inchangé —</option>{% for k, v in SCOPES.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+    <label>Tags</label><input name="tags" placeholder="ex : axa, assurance">
+    <input type="hidden" name="priority" value="50">
+    <button class="btn small" type="submit" style="margin-top:12px">Créer</button>
+  </form>
+</details>
+
+<h2>Sauvegarde</h2>
+<div class="card">
+  <p style="margin-top:0">Téléchargez toutes vos données (base + factures) dans un fichier ZIP.</p>
+  <a class="btn ghost" href="/settings/backup">⤓ Télécharger une sauvegarde</a>
+</div>
+{% endblock %}

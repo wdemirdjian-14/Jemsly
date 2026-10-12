@@ -1,0 +1,7 @@
+data
+backups
+.env
+.git
+tests
+__pycache__
+.venv

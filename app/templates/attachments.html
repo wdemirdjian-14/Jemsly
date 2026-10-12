@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block back %}<a class="back" href="/more">‹</a>{% endblock %}
+{% block heading %}Factures & documents{% endblock %}
+{% block content %}
+<div class="card flush">
+  <ul class="list">
+    {% for a in rows %}
+    <li>
+      <div class="ico">{{ '🖼️' if a.mime.startswith('image') else '📄' }}</div>
+      <div class="grow">
+        <a href="/attachments/{{ a.id }}" target="_blank" class="ell" style="display:block">{{ a.filename }}</a>
+        <div class="sub">
+          {{ a.uploaded_at.strftime('%d/%m/%Y') }} · {{ (a.size / 1024)|round|int }} Ko
+          {% if a.transaction %} · <a href="/transactions/{{ a.transaction.id }}">{{ a.transaction.label|truncate(30) }} ({{ a.transaction.amount_cents|smoney }})</a>
+          {% elif a.pending %} · <a href="/pending/{{ a.pending.id }}">en attente : {{ a.pending.label|truncate(30) }}</a>
+          {% elif a.loan_id %} · <a href="/loans/{{ a.loan_id }}">crédit</a>
+          {% elif a.insurance_id %} · <a href="/insurances/{{ a.insurance_id }}">assurance</a>{% endif %}
+        </div>
+      </div>
+    </li>
+    {% else %}
+    <li class="empty" style="display:block">Aucun document.</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endblock %}

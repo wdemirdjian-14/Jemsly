@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block back %}<a class="back" href="/more">‹</a>{% endblock %}
+{% block heading %}Échéancier{% endblock %}
+{% block content %}
+<div class="seg" style="margin-bottom:12px">
+  {% for d in [30, 60, 90, 180] %}<label onclick="location.href='?days={{ d }}'" {% if d == days %}style="background:var(--card);font-weight:600;color:var(--primary)"{% endif %}>{{ d }} j</label>{% endfor %}
+</div>
+<div class="grid2">
+  <div class="stat"><div class="l">Disponible aujourd'hui</div><div class="v">{{ balance|money }}</div></div>
+  <div class="stat"><div class="l">Point le plus bas</div><div class="v" {% if low < 0 %}style="color:var(--bad)"{% endif %}>{{ low|money }}</div></div>
+</div>
+<p class="sub">Projection à partir des récurrences, crédits, assurances et paiements en plusieurs fois (les dépenses courantes non planifiées n'y sont pas).</p>
+<div class="card flush">
+  <ul class="list">
+    {% for e, run in rows %}
+    <li><a class="row" href="{{ e.url }}">
+      <div class="ico">{{ {'crédit': '🏦', 'assurance': '🛡️', 'plusieurs fois': '🧩', 'provision': '🐷'}.get(e.kind, '🔁') }}</div>
+      <div class="grow"><div class="ell">{{ e.label }}</div>
+        <div class="sub">{{ e.date|d }} · {{ e.kind }}{% if e.late %} · <span style="color:var(--warn)">attendu, pas encore vu</span>{% endif %}</div></div>
+      <div class="right"><div class="amt {{ 'pos' if e.amount_cents > 0 }}">{{ e.amount_cents|smoney }}</div>
+        <div class="sub" {% if run < 0 %}style="color:var(--bad)"{% endif %}>{{ run|money }}</div></div>
+    </a></li>
+    {% else %}
+    <li class="empty" style="display:block">Rien de prévu. <a href="/recurrences/new">Ajouter une récurrence</a></li>
+    {% endfor %}
+  </ul>
+</div>
+
+{% if provisions %}
+<h2>Provisions à constituer</h2>
+<div class="card flush"><ul class="list">
+  {% for p in provisions %}
+  <li><a class="row" href="{{ p.url }}">
+    <div class="ico">🐷</div>
+    <div class="grow"><div class="ell">{{ p.label }}</div>
+      <div class="sub">{{ p.amount|money }} le {{ p.due|d }} · devrait être de côté : {{ p.should_have|money }}</div></div>
+    <div class="amt">{{ p.monthly|money }}<span class="sub">/mois</span></div>
+  </a></li>
+  {% endfor %}
+</ul></div>
+{% endif %}
+{% endblock %}

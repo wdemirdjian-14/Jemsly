@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block back %}<a class="back" href="/pending">‹</a>{% endblock %}
+{% block heading %}{{ 'Achat en attente' if p else 'Nouvel achat' }}{% endblock %}
+{% block content %}
+{% if not p %}
+<p class="sub" style="margin-top:0">Notez votre achat maintenant (avec la photo du ticket) : il se rangera tout seul quand il apparaîtra sur votre relevé.</p>
+{% elif p.status == 'rapproche' %}
+<div class="alert info"><b>✓ Rapproché</b>Retrouvé sur le compte : <a href="/transactions/{{ p.transaction_id }}">voir l'opération</a></div>
+{% endif %}
+<form method="post" action="/pending{{ '/' ~ p.id if p }}" enctype="multipart/form-data" class="card">
+  <div class="seg">
+    <label><input type="radio" name="direction" value="out" {{ 'checked' if not p or p.amount_cents < 0 }}>Dépense</label>
+    <label><input type="radio" name="direction" value="in" {{ 'checked' if p and p.amount_cents > 0 }}>Remboursement</label>
+  </div>
+  <input class="amount-input" name="amount" inputmode="decimal" placeholder="0,00 €" required autofocus
+         value="{{ (-p.amount_cents if p.amount_cents < 0 else p.amount_cents)|eur if p }}" style="margin-top:12px">
+  <label>Quoi / où ?</label>
+  <input name="label" value="{{ p.label if p }}" placeholder="ex : Chaussures Léo – Decathlon" required>
+  <div class="grid2">
+    <div><label>Date</label><input type="date" name="date" value="{{ (p.date if p else today).isoformat() }}"></div>
+    <div><label>Pour qui</label>{{ m.person_select(persons, p.person_id if p) }}</div>
+  </div>
+  <label>Catégorie</label>{{ m.category_select(categories, p.category_id if p) }}
+  <label>Périmètre</label>{{ m.scope_seg(p.scope if p else 'famille') }}
+  <label>Tags</label>
+  <input name="tags" value="{{ p.tags|map(attribute='name')|join(', ') if p }}" placeholder="ex : rentrée, anniversaire" autocomplete="off">
+  {{ m.file_input('📷 Photo du ticket / facture') }}
+  <details style="margin-top:12px">
+    <summary class="sub">Plus d'options</summary>
+    <label>Mot attendu dans le libellé bancaire <span class="sub">(facultatif, pour fiabiliser)</span></label>
+    <input name="keyword" value="{{ p.keyword if p }}" placeholder="ex : DECATHLON">
+    <label>Note</label>
+    <textarea name="note">{{ p.note if p }}</textarea>
+  </details>
+  <button class="btn block" type="submit">Enregistrer</button>
+</form>
+{% if p %}
+{{ m.attachments(p.attachments, '/pending/' ~ p.id) }}
+<form method="post" action="/pending/{{ p.id }}/status" class="actions">
+  {% if p.status == 'attente' %}
+  <button class="btn small ghost" name="action" value="cancel">Annulé / jamais débité</button>
+  {% else %}
+  <button class="btn small ghost" name="action" value="reopen">Remettre en attente</button>
+  {% endif %}
+  <button class="btn small danger" name="action" value="delete" data-confirm="Supprimer cet achat ?">Supprimer</button>
+</form>
+{% endif %}
+{% endblock %}

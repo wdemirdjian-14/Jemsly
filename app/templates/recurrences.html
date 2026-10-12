@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block back %}<a class="back" href="/more">‹</a>{% endblock %}
+{% block heading %}Récurrences & provisions{% endblock %}
+{% block topright %}<a href="/recurrences/new" class="btn small">+ Ajouter</a>{% endblock %}
+{% block content %}
+<div class="grid2">
+  <div class="stat"><div class="l">Entrées / mois</div><div class="v pos">{{ monthly_in|money }}</div></div>
+  <div class="stat"><div class="l">Sorties / mois</div><div class="v">{{ monthly_out|money }}</div></div>
+</div>
+<p class="sub">Salaires, loyer, abonnements, impôts… et provisions pour les grosses dépenses annuelles. Ils alimentent l'échéancier et sont reconnus automatiquement à l'import.</p>
+<div class="card flush">
+  <ul class="list">
+    {% for r in rows %}
+    <li><a class="row" href="/recurrences/{{ r.id }}">
+      <div class="ico">{{ '🐷' if r.is_provision else (r.category.icon if r.category else '🔁') }}</div>
+      <div class="grow"><div class="ell">{{ r.label }} {% if not r.active %}<span class="chip grey">inactif</span>{% endif %}</div>
+        <div class="sub">{{ FREQUENCIES.get(r.frequency) }} · prochaine {{ r.next_date|d }}{% if r.match_pattern %} · 🔗 {{ r.match_pattern }}{% endif %}</div></div>
+      <div class="amt {{ 'pos' if r.amount_cents > 0 }}">{{ r.amount_cents|smoney }}</div>
+    </a></li>
+    {% else %}
+    <li class="empty" style="display:block"><div class="i">🔁</div>Aucune récurrence.</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endblock %}

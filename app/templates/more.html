@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block heading %}Plus{% endblock %}
+{% block content %}
+<div class="tile-grid">
+  <a class="tile" href="/import"><div class="i">⤒</div><b>Importer un relevé</b><span>CSV, OFX, PDF</span></a>
+  <a class="tile" href="/report"><div class="i">📊</div><b>Bilan du mois</b><span>Inspection + analyse IA</span></a>
+  <a class="tile" href="/budget"><div class="i">🎯</div><b>Budgets</b><span>Par catégorie & provisions</span></a>
+  <a class="tile" href="/forecast"><div class="i">📅</div><b>Échéancier</b><span>Ce qui va tomber</span></a>
+  <a class="tile" href="/recurrences"><div class="i">🔁</div><b>Récurrences</b><span>Salaires, abonnements…</span></a>
+  <a class="tile" href="/installments"><div class="i">🧩</div><b>Paiements en plusieurs fois</b><span>3x, 4x, 10x</span></a>
+  <a class="tile" href="/loans"><div class="i">🏦</div><b>Crédits</b><span>Capital restant, fin</span></a>
+  <a class="tile" href="/insurances"><div class="i">🛡️</div><b>Assurances</b><span>Contrats & échéances</span></a>
+  <a class="tile" href="/jems"><div class="i">💼</div><b>Notes de frais Jems</b><span>À déclarer / remboursé</span></a>
+  <a class="tile" href="/tags"><div class="i">#</div><b>Tags</b><span>Retrouver par tag</span></a>
+  <a class="tile" href="/attachments"><div class="i">📎</div><b>Factures</b><span>Tous les justificatifs</span></a>
+  <a class="tile" href="/settings"><div class="i">⚙️</div><b>Paramètres</b><span>Comptes, catégories, règles</span></a>
+</div>
+<form method="post" action="/logout" style="text-align:center;margin-top:24px">
+  <button class="btn small ghost" name="x" value="1">Se déconnecter</button>
+</form>
+{% endblock %}

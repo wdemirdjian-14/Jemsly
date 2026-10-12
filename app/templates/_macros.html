@@ -1,0 +1,88 @@
+{% macro tx_row(t, back='') -%}
+<li>
+  <a class="row" href="/transactions/{{ t.id }}{% if back %}?back={{ back|urlencode }}{% endif %}">
+    <div class="ico">{{ t.category.icon if t.category else '❓' }}</div>
+    <div class="grow">
+      <div class="ell">{{ t.label }}</div>
+      <div class="sub ell">
+        {{ t.date|d }} · {{ t.category.name if t.category else 'À catégoriser' }}{% if t.person %} · {{ t.person.name }}{% endif %}
+      </div>
+      <div>
+        {% if t.scope == 'jems' %}<span class="chip warn">Jems · {{ JEMS_STATUSES.get(t.jems_status, '') }}</span>{% endif %}
+        {% for tag in t.tags %}<span class="chip">#{{ tag.name }}</span>{% endfor %}
+        {% if t.attachments %}<span class="chip grey">📎 {{ t.attachments|length }}</span>{% endif %}
+      </div>
+    </div>
+    <div class="amt {{ 'pos' if t.amount_cents > 0 else 'neg' }}">{{ t.amount_cents|smoney }}</div>
+  </a>
+</li>
+{%- endmacro %}
+
+{% macro category_select(categories, selected=None, name='category_id', empty='— Catégorie —') -%}
+<select name="{{ name }}">
+  <option value="">{{ empty }}</option>
+  {% for kind, label in [('depense', 'Dépenses'), ('revenu', 'Revenus'), ('virement', 'Virements')] %}
+  <optgroup label="{{ label }}">
+    {% for c in categories if c.kind == kind %}
+    <option value="{{ c.id }}" {{ 'selected' if c.id == selected }}>{{ c.icon }} {{ c.name }}</option>
+    {% endfor %}
+  </optgroup>
+  {% endfor %}
+</select>
+{%- endmacro %}
+
+{% macro person_select(persons, selected=None, empty='— Pour qui ? —') -%}
+<select name="person_id">
+  <option value="">{{ empty }}</option>
+  {% for p in persons %}<option value="{{ p.id }}" {{ 'selected' if p.id == selected }}>{{ p.name }}</option>{% endfor %}
+</select>
+{%- endmacro %}
+
+{% macro scope_seg(selected='famille', prefix='') -%}
+<div class="seg">
+  {% for k, v in SCOPES.items() %}
+  <label><input type="radio" name="scope" value="{{ k }}" {{ 'checked' if k == (selected or 'famille') }}>{{ v.split(' ')[0] }}</label>
+  {% endfor %}
+</div>
+{%- endmacro %}
+
+{% macro jems_status(selected=None) -%}
+<div data-jems>
+  <label>Statut note de frais</label>
+  <select name="jems_status">
+    {% for k, v in JEMS_STATUSES.items() %}<option value="{{ k }}" {{ 'selected' if k == selected }}>{{ v }}</option>{% endfor %}
+  </select>
+</div>
+{%- endmacro %}
+
+{% macro attachments(list, back) -%}
+{% if list %}
+<div class="thumbs">
+  {% for a in list %}
+  <a href="/attachments/{{ a.id }}" target="_blank">{{ '🖼️' if a.mime.startswith('image') else '📄' }} {{ a.filename[:28] }}</a>
+  <form method="post" action="/attachments/{{ a.id }}/delete" class="inline">
+    <input type="hidden" name="back" value="{{ back }}">
+    <button class="btn small danger" data-confirm="Supprimer ce fichier ?" name="x" value="1">✕</button>
+  </form>
+  {% endfor %}
+</div>
+{% endif %}
+{%- endmacro %}
+
+{% macro file_input(label='Facture / justificatif') -%}
+<label>{{ label }}</label>
+<input type="file" name="files" accept="image/*,application/pdf" multiple>
+{%- endmacro %}
+
+{% macro monthnav(month, base) -%}
+<div class="monthnav">
+  <a href="{{ base }}month={{ shift_month(month, -1) }}">‹</a>
+  <b>{{ month|month_label }}</b>
+  <a href="{{ base }}month={{ shift_month(month, 1) }}">›</a>
+</div>
+{%- endmacro %}
+
+{% macro budget_bar(total, budget) -%}
+{% set pct = (100 * total / budget)|round|int if budget else 0 %}
+<div class="bar {{ 'over' if pct > 100 else ('near' if pct > 85) }}"><span style="width: {{ [pct, 100]|min }}%"></span></div>
+{%- endmacro %}

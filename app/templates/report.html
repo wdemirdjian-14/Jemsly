@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block back %}<a class="back" href="/more">‹</a>{% endblock %}
+{% block heading %}Bilan du mois{% endblock %}
+{% block content %}
+{{ m.monthnav(month, '/report?') }}
+
+<div class="grid3">
+  <div class="stat"><div class="l">Entrées</div><div class="v pos">{{ stats.income|money }}</div>
+    <div class="sub">{{ (stats.income - prev.income)|smoney }} vs M-1</div></div>
+  <div class="stat"><div class="l">Sorties</div><div class="v">{{ stats.expenses|money }}</div>
+    <div class="sub">{{ (stats.expenses - prev.expenses)|smoney }} vs M-1</div></div>
+  <div class="stat"><div class="l">Épargne</div><div class="v" {% if stats.net < 0 %}style="color:var(--bad)"{% endif %}>{{ stats.net|smoney }}</div>
+    <div class="sub">{% if stats.savings_rate is not none %}{{ stats.savings_rate }} % des revenus{% endif %}</div></div>
+</div>
+
+{% set maxv = [history|map(attribute=1)|max, history|map(attribute=2)|max, 1]|max %}
+<div class="card" style="margin-top:12px">
+  <div class="sub">6 derniers mois · <span style="color:var(--good)">■</span> entrées <span style="color:var(--primary)">■</span> sorties</div>
+  <div class="chart">
+    {% for mo, inc, exp in history %}
+    <div class="col">
+      <div class="bars"><span class="in" style="height:{{ (100 * inc / maxv)|round }}%"></span><span class="out" style="height:{{ (100 * exp / maxv)|round }}%"></span></div>
+      <small>{{ mo[5:] }}</small>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<h2>Inspection</h2>
+{% for a in alerts %}
+<a class="alert {{ a.level }}" href="{{ a.url or '#' }}"><b>{{ a.title }}</b>{{ a.detail }}</a>
+{% else %}
+<div class="alert info"><b>✓ Rien d'anormal</b>Aucun dépassement, doublon ou frais repéré.</div>
+{% endfor %}
+
+<h2 id="ia">Analyse IA</h2>
+<div class="card md">
+  {% if saved %}
+  {{ saved.content|md }}
+  <div class="sub">Générée le {{ saved.created_at.strftime('%d/%m/%Y') }}</div>
+  {% elif not ai_enabled %}
+  <p class="sub">Ajoutez <code>ANTHROPIC_API_KEY</code> dans le fichier <code>.env</code> pour obtenir chaque mois un avis personnalisé sur votre budget.</p>
+  {% else %}
+  <p class="sub">Obtenez un avis personnalisé : verdict du mois, points d'attention et 3 actions concrètes.</p>
+  {% endif %}
+  {% if ai_enabled %}
+  <form method="post" action="/report/ai?month={{ month }}">
+    <button class="btn {{ 'ghost' if saved }} block" type="submit">✨ {{ 'Régénérer' if saved else 'Analyser mon mois' }}</button>
+  </form>
+  {% endif %}
+</div>
+
+<h2>Par catégorie</h2>
+<div class="card">
+  {% for c in stats.categories if c.total or c.budget %}
+  <a href="/transactions?month={{ month }}&category={{ c.id or 0 }}" style="display:block;color:inherit;margin-bottom:12px">
+    <div style="display:flex;justify-content:space-between;gap:8px"><span class="ell">{{ c.icon }} {{ c.name }}</span>
+      <span class="amt">{{ c.total|money }}{% if c.budget %}<span class="sub"> / {{ c.budget|money }}</span>{% endif %}</span></div>
+    {% if c.budget %}{{ m.budget_bar(c.total, c.budget) }}{% else %}
+    <div class="bar"><span style="width:{{ (100 * c.total / (stats.expenses or 1))|round }}%;opacity:.5"></span></div>{% endif %}
+  </a>
+  {% else %}<p class="sub">Aucune dépense ce mois-ci.</p>{% endfor %}
+</div>
+
+<div class="grid2">
+  <div>
+    <h2>Pour qui</h2>
+    <div class="card">{% for name, v in stats.persons %}<div style="display:flex;justify-content:space-between"><span>{{ name }}</span><b>{{ v|money }}</b></div>{% endfor %}</div>
+  </div>
+  <div>
+    <h2>Périmètre</h2>
+    <div class="card">{% for k, v in stats.scopes %}<a href="/transactions?month={{ month }}&scope={{ k }}" style="display:flex;justify-content:space-between;color:inherit"><span>{{ SCOPES.get(k, k).split(' ')[0] }}</span><b>{{ v|money }}</b></a>{% endfor %}</div>
+  </div>
+</div>
+
+<h2>Top marchands</h2>
+<div class="card flush"><ul class="list">
+  {% for name, v in stats.merchants %}
+  <li><a class="row" href="/transactions?month={{ month }}&q={{ name|urlencode }}"><div class="grow ell">{{ name }}</div><div class="amt">{{ v|money }}</div></a></li>
+  {% endfor %}
+</ul></div>
+<div class="actions"><a class="btn small ghost" href="/export.csv?month={{ month }}">⤓ Export CSV du mois</a></div>
+{% endblock %}

@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block heading %}{{ APP_NAME }}{% endblock %}
+{% block topright %}<a href="/import" class="btn small ghost">⤒ Relevé</a>{% endblock %}
+{% block content %}
+<div class="card hero">
+  <div class="muted">Disponible réel</div>
+  <div class="big">{{ available|money }}</div>
+  <div class="muted" style="font-size:13px">
+    Solde banque {{ total|money }}{% if pending %} · achats non débités {{ pending|money }}{% endif %}
+  </div>
+  <div style="margin-top:10px;font-size:14px">Fin de mois estimée : <b>{{ end_of_month|money }}</b></div>
+</div>
+
+{% if nav_inbox or nav_pending %}
+<div class="grid2">
+  <a class="stat" href="/inbox"><div class="l">À catégoriser</div><div class="v">📥 {{ nav_inbox }}</div></a>
+  <a class="stat" href="/pending"><div class="l">Achats en attente</div><div class="v">⏳ {{ nav_pending }}</div></a>
+</div>
+{% endif %}
+
+<h2>{{ month|month_label }}</h2>
+<div class="grid3">
+  <div class="stat"><div class="l">Entrées</div><div class="v pos">{{ stats.income|money }}</div></div>
+  <div class="stat"><div class="l">Sorties</div><div class="v">{{ stats.expenses|money }}</div></div>
+  <div class="stat"><div class="l">Solde</div><div class="v {{ 'pos' if stats.net >= 0 }}" {% if stats.net < 0 %}style="color:var(--bad)"{% endif %}>{{ stats.net|smoney }}</div></div>
+</div>
+
+{% if alerts %}
+<h2>À surveiller</h2>
+{% for a in alerts %}
+<a class="alert {{ a.level }}" href="{{ a.url or '/report' }}"><b>{{ a.title }}</b>{{ a.detail }}</a>
+{% endfor %}
+{% endif %}
+
+{% if budgets %}
+<h2>Budgets du mois <a href="/budget" style="float:right;text-transform:none">Tout voir</a></h2>
+<div class="card">
+  {% for c in budgets %}
+  <div style="margin-bottom:12px">
+    <div style="display:flex;justify-content:space-between"><span>{{ c.icon }} {{ c.name }}</span>
+      <span class="sub">{{ c.total|money }} / {{ c.budget|money }}</span></div>
+    {{ m.budget_bar(c.total, c.budget) }}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<h2>Prochaines échéances <a href="/forecast" style="float:right;text-transform:none">Échéancier</a></h2>
+<div class="card flush">
+  <ul class="list">
+    {% for e in upcoming %}
+    <li><a class="row" href="{{ e.url }}">
+      <div class="ico">{{ {'crédit': '🏦', 'assurance': '🛡️', 'plusieurs fois': '🧩', 'provision': '🐷'}.get(e.kind, '🔁') }}</div>
+      <div class="grow"><div class="ell">{{ e.label }}</div><div class="sub">{{ e.date|d }} · {{ e.kind }}{% if e.late %} · <span style="color:var(--warn)">pas encore vu</span>{% endif %}</div></div>
+      <div class="amt {{ 'pos' if e.amount_cents > 0 }}">{{ e.amount_cents|smoney }}</div>
+    </a></li>
+    {% else %}
+    <li class="empty" style="display:block">Aucune échéance prévue. <a href="/recurrences/new">Ajouter une récurrence</a></li>
+    {% endfor %}
+  </ul>
+</div>
+
+<h2>Comptes</h2>
+<div class="card flush">
+  <ul class="list">
+    {% for a, b in balances %}
+    <li><a class="row" href="/transactions?account={{ a.id }}">
+      <div class="ico">🏦</div>
+      <div class="grow"><div>{{ a.name }}</div><div class="sub">{{ a.bank }}</div></div>
+      <div class="amt">{{ b|money }}</div>
+    </a></li>
+    {% endfor %}
+  </ul>
+</div>
+{% endblock %}

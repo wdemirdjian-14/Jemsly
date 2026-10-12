@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block back %}<a class="back" href="/more">‹</a>{% endblock %}
+{% block heading %}Paiements en plusieurs fois{% endblock %}
+{% block topright %}<a href="/installments/new" class="btn small">+ Ajouter</a>{% endblock %}
+{% block content %}
+<div class="stat"><div class="l">Reste à payer</div><div class="v">{{ remaining|money }}</div></div>
+<div class="card flush" style="margin-top:12px">
+  <ul class="list">
+    {% for p in plans %}
+    {% set paid = p.items|selectattr('transaction_id')|list|length %}
+    <li><a class="row" href="/installments/{{ p.id }}">
+      <div class="ico">🧩</div>
+      <div class="grow">
+        <div class="ell">{{ p.label }}</div>
+        <div class="sub">{{ p.merchant }} · {{ paid }}/{{ p.count }} payé(s){% if p.person %} · {{ p.person.name }}{% endif %}</div>
+        <div class="bar"><span style="width:{{ (100 * paid / p.count)|round|int }}%"></span></div>
+      </div>
+      <div class="amt">{{ p.total_cents|money }}</div>
+    </a></li>
+    {% else %}
+    <li class="empty" style="display:block"><div class="i">🧩</div>Aucun paiement fractionné en cours.</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endblock %}

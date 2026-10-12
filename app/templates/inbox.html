@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block heading %}À trier{% endblock %}
+{% block content %}
+<div class="seg" style="margin-bottom:12px">
+  <label style="background:var(--card);font-weight:600;color:var(--primary)">📥 À catégoriser ({{ rows|length }})</label>
+  <label onclick="location.href='/pending'">⏳ Achats en attente ({{ nav_pending }})</label>
+</div>
+
+{% for g in groups %}{% set t = g[0] %}
+<form method="post" action="/transactions/{{ t.id }}" enctype="multipart/form-data" class="card">
+  <input type="hidden" name="back" value="/inbox">
+  <input type="hidden" name="make_rule" value="1">
+  <div style="display:flex;gap:10px;align-items:flex-start">
+    <div class="grow">
+      <div style="font-weight:600;word-break:break-word">{{ t.label }}</div>
+      <div class="sub">{{ t.date|d }} · {{ t.account.name }}{% if g|length > 1 %} · <b style="color:var(--primary)">+ {{ g|length - 1 }} similaire(s)</b>{% endif %}</div>
+    </div>
+    <div class="amt {{ 'pos' if t.amount_cents > 0 }}">{{ t.amount_cents|smoney }}</div>
+  </div>
+  <div class="grid2" style="margin-top:8px">
+    {{ m.category_select(categories, None) }}
+    {{ m.person_select(persons, None) }}
+  </div>
+  <div style="margin-top:8px">{{ m.scope_seg('famille') }}</div>
+  {{ m.jems_status() }}
+  <input name="tags" placeholder="Tags (facultatif)" style="margin-top:8px" autocomplete="off">
+  <details style="margin-top:6px"><summary class="sub">⚙️ Règle auto : libellé contenant « {{ t.label|mkey }} »</summary>
+    <input name="rule_pattern" placeholder="Laisser vide pour ne pas créer de règle" value="{{ t.label|mkey }}">
+    <label class="check"><input type="checkbox" name="apply_similar" value="1" checked> Ranger aussi les similaires</label>
+  </details>
+  <div class="actions">
+    <button class="btn small" type="submit">✓ Ranger</button>
+    <a class="btn small ghost" href="/transactions/{{ t.id }}?back=/inbox">Détails / facture</a>
+  </div>
+</form>
+{% else %}
+<div class="empty"><div class="i">🎉</div>Tout est rangé !</div>
+{% endfor %}
+{% if rows %}
+<form method="post" action="/settings/reapply" style="text-align:center">
+  <button class="btn small ghost">↻ Réappliquer les règles</button>
+</form>
+{% endif %}
+{% endblock %}

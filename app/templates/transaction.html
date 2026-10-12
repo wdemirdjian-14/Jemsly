@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block back %}<a class="back" href="{{ back }}">‹</a>{% endblock %}
+{% block heading %}Opération{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="sub">{{ tx.date|d }} · {{ tx.account.name }}</div>
+  <div style="font-size:17px;font-weight:600;margin:4px 0;word-break:break-word">{{ tx.label }}</div>
+  <div class="amt {{ 'pos' if tx.amount_cents > 0 }}" style="font-size:28px">{{ tx.amount_cents|smoney }}</div>
+  <div>
+    {% if tx.auto_source and tx.auto_source != 'manuel' %}<span class="chip good">Rangé auto : {{ tx.auto_source }}</span>{% endif %}
+    {% if tx.loan %}<a class="chip" href="/loans/{{ tx.loan.id }}">🏦 {{ tx.loan.name }}</a>{% endif %}
+    {% if tx.insurance %}<a class="chip" href="/insurances/{{ tx.insurance.id }}">🛡️ {{ tx.insurance.name }}</a>{% endif %}
+    {% if pend %}<a class="chip" href="/pending/{{ pend.id }}">⏳ Achat du {{ pend.date|d }} : {{ pend.label }}</a>{% endif %}
+  </div>
+  {{ m.attachments(tx.attachments, '/transactions/' ~ tx.id) }}
+</div>
+
+<form method="post" action="/transactions/{{ tx.id }}" enctype="multipart/form-data" class="card">
+  <input type="hidden" name="back" value="{{ back }}">
+  <label>Catégorie</label>{{ m.category_select(categories, tx.category_id) }}
+  <label>Pour qui</label>{{ m.person_select(persons, tx.person_id) }}
+  <label>Périmètre</label>{{ m.scope_seg(tx.scope) }}
+  {{ m.jems_status(tx.jems_status) }}
+  <label>Tags <span class="sub">(séparés par des virgules : axa, assurance-mini…)</span></label>
+  <input name="tags" value="{{ tx.tags|map(attribute='name')|join(', ') }}" autocomplete="off">
+  <label>Note</label>
+  <textarea name="note">{{ tx.note }}</textarea>
+  {{ m.file_input() }}
+
+  <details style="margin-top:12px" {{ 'open' if not tx.categorized }}>
+    <summary class="sub">⚙️ Automatiser pour la suite</summary>
+    <label class="check"><input type="checkbox" name="make_rule" value="1" {{ 'checked' if not tx.categorized }}> Créer une règle : libellé contenant</label>
+    <input name="rule_pattern" value="{{ suggested }}">
+    {% if similar %}
+    <label class="check"><input type="checkbox" name="apply_similar" value="1" checked> Ranger aussi les {{ similar|length }} opération(s) similaire(s) non catégorisée(s)</label>
+    {% endif %}
+  </details>
+  <button class="btn block" type="submit">Enregistrer</button>
+</form>
+
+{% if candidates and not pend %}
+<details class="card">
+  <summary><b>⏳ Rapprocher d'un achat en attente</b></summary>
+  {% for p in candidates %}
+  <form method="post" action="/transactions/{{ tx.id }}/link-pending" class="row" style="padding:10px 0">
+    <input type="hidden" name="pending_id" value="{{ p.id }}">
+    <div class="grow"><div class="ell">{{ p.label }}</div><div class="sub">{{ p.date|d }} · {{ p.amount_cents|smoney }}</div></div>
+    <button class="btn small ghost">Lier</button>
+  </form>
+  {% endfor %}
+</details>
+{% endif %}
+
+<form method="post" action="/transactions/{{ tx.id }}/delete" style="text-align:center;margin-top:20px">
+  <button class="btn small danger" data-confirm="Supprimer définitivement cette opération ?" name="x" value="1">Supprimer l'opération</button>
+</form>
+{% endblock %}

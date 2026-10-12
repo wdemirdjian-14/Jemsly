@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block back %}<a class="back" href="/recurrences">‹</a>{% endblock %}
+{% block heading %}{{ rec.label if rec else 'Nouvelle récurrence' }}{% endblock %}
+{% block content %}
+{% set amount = (rec.amount_cents if rec else ((q.get('amount') or '0')|float * 100)|round|int) %}
+<form method="post" action="/recurrences{{ '/' ~ rec.id if rec }}" class="card">
+  <div class="seg">
+    <label><input type="radio" name="direction" value="out" {{ 'checked' if amount <= 0 }}>Sortie</label>
+    <label><input type="radio" name="direction" value="in" {{ 'checked' if amount > 0 }}>Entrée</label>
+  </div>
+  <label>Libellé</label><input name="label" value="{{ rec.label if rec else q.get('label', '') }}" placeholder="ex : Salaire, Loyer, Netflix, Taxe foncière" required>
+  <div class="grid2">
+    <div><label>Montant</label><input name="amount" inputmode="decimal" value="{{ (amount|abs)|eur if amount }}" required></div>
+    <div><label>Fréquence</label><select name="frequency">{% for k, v in FREQUENCIES.items() %}<option value="{{ k }}" {{ 'selected' if (rec.frequency if rec else 'mensuel') == k }}>{{ v }}</option>{% endfor %}</select></div>
+    <div><label>Prochaine date</label><input type="date" name="next_date" value="{{ (rec.next_date if rec else today).isoformat() }}"></div>
+    <div><label>Jusqu'au <span class="sub">(facultatif)</span></label><input type="date" name="end_date" value="{{ rec.end_date.isoformat() if rec and rec.end_date }}"></div>
+  </div>
+  <label>Mot du libellé bancaire <span class="sub">(pour la reconnaître à l'import)</span></label>
+  <input name="match_pattern" value="{{ rec.match_pattern if rec else q.get('pattern', '') }}" placeholder="ex : NETFLIX">
+  <label>Catégorie</label>{{ m.category_select(categories, rec.category_id if rec) }}
+  <label>Pour qui</label>{{ m.person_select(persons, rec.person_id if rec) }}
+  <label>Périmètre</label>{{ m.scope_seg(rec.scope if rec else 'famille') }}
+  <label class="check"><input type="checkbox" name="is_provision" value="1" {{ 'checked' if rec and rec.is_provision }}> 🐷 Provision (je mets de côté chaque mois pour cette dépense)</label>
+  {% if rec %}<label class="check"><input type="checkbox" name="active" value="1" {{ 'checked' if rec.active }}> Active</label>{% endif %}
+  <button class="btn block" type="submit">Enregistrer</button>
+  {% if rec %}<button class="btn block danger" name="action" value="delete" data-confirm="Supprimer cette récurrence ?">Supprimer</button>{% endif %}
+</form>
+{% if txs %}
+<h2>Derniers passages</h2>
+<div class="card flush"><ul class="list">{% for t in txs %}{{ m.tx_row(t) }}{% endfor %}</ul></div>
+{% endif %}
+{% endblock %}

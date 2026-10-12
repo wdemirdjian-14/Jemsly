@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block heading %}Opérations{% endblock %}
+{% block topright %}<a href="/manual" class="btn small ghost">+ Saisir</a>{% endblock %}
+{% block content %}
+<form method="get" action="/transactions" data-autosubmit>
+  <input type="search" name="q" value="{{ filters.q or '' }}" placeholder="🔍 Rechercher (ex : axa, amazon…)" style="margin-bottom:8px">
+  <div class="filters">
+    <input type="month" name="month" value="{{ month }}">
+    <select name="category">
+      <option value="">Catégorie</option>
+      <option value="0" {{ 'selected' if filters.category == '0' }}>❓ Non catégorisé</option>
+      {% for c in categories %}<option value="{{ c.id }}" {{ 'selected' if filters.category == c.id|string }}>{{ c.icon }} {{ c.name }}</option>{% endfor %}
+    </select>
+    <select name="person">
+      <option value="">Pour qui</option>
+      {% for p in persons %}<option value="{{ p.id }}" {{ 'selected' if filters.person == p.id|string }}>{{ p.name }}</option>{% endfor %}
+    </select>
+    <select name="scope">
+      <option value="">Périmètre</option>
+      {% for k, v in SCOPES.items() %}<option value="{{ k }}" {{ 'selected' if filters.scope == k }}>{{ v }}</option>{% endfor %}
+    </select>
+    <select name="dir">
+      <option value="">Entrées + sorties</option>
+      <option value="out" {{ 'selected' if filters.dir == 'out' }}>Sorties</option>
+      <option value="in" {{ 'selected' if filters.dir == 'in' }}>Entrées</option>
+    </select>
+    {% if accounts|length > 1 %}
+    <select name="account">
+      <option value="">Compte</option>
+      {% for a in accounts %}<option value="{{ a.id }}" {{ 'selected' if filters.account == a.id|string }}>{{ a.name }}</option>{% endfor %}
+    </select>
+    {% endif %}
+    {% if filters.tag %}<input type="hidden" name="tag" value="{{ filters.tag }}">{% endif %}
+    {% if filters.loan %}<input type="hidden" name="loan" value="{{ filters.loan }}">{% endif %}
+    {% if filters.insurance %}<input type="hidden" name="insurance" value="{{ filters.insurance }}">{% endif %}
+  </div>
+</form>
+{% if filters %}
+<div style="margin-bottom:8px">
+  {% if filters.tag %}<span class="chip">#{{ filters.tag }}</span>{% endif %}
+  <a href="/transactions" class="sub">✕ Effacer les filtres</a>
+</div>
+{% endif %}
+
+<div class="grid3" style="margin-bottom:12px">
+  <div class="stat"><div class="l">{{ total_count }} opérations</div><div class="v" style="font-size:15px">&nbsp;</div></div>
+  <div class="stat"><div class="l">Entrées</div><div class="v pos" style="font-size:15px">{{ inc|money }}</div></div>
+  <div class="stat"><div class="l">Sorties</div><div class="v" style="font-size:15px">{{ out|money }}</div></div>
+</div>
+
+<div class="card flush">
+  <ul class="list">
+    {% for t in rows %}{{ m.tx_row(t, request.url.path ~ ('?' ~ request.url.query if request.url.query else '')) }}
+    {% else %}<li class="empty" style="display:block"><div class="i">🗂️</div>Aucune opération. <a href="/import">Importer un relevé</a></li>
+    {% endfor %}
+  </ul>
+</div>
+{% if total_count > limit %}
+<a class="btn ghost block" href="?{% for k, v in filters.items() %}{{ k }}={{ v|urlencode }}&{% endfor %}limit={{ limit + 300 }}">Afficher plus</a>
+{% endif %}
+<div class="actions"><a class="btn small ghost" href="/export.csv?month={{ month }}">⤓ Export CSV{% if month %} du mois{% endif %}</a></div>
+{% endblock %}

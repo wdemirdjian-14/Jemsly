@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block back %}<a class="back" href="/loans">‹</a>{% endblock %}
+{% block heading %}{{ loan.name if loan else 'Nouveau crédit' }}{% endblock %}
+{% block content %}
+{% if loan %}
+<div class="card">
+  <div class="grid2">
+    <div><div class="sub">Capital restant dû</div><div class="amt" style="font-size:22px">{{ status.remaining_cents|money }}</div></div>
+    <div><div class="sub">Fin du crédit</div><div class="amt" style="font-size:22px">{{ status.end_date.strftime('%m/%Y') }}</div></div>
+  </div>
+  <div class="bar" style="margin-top:12px"><span style="width:{{ status.progress }}%"></span></div>
+  <div class="sub">{{ status.paid_count }}/{{ status.count }} échéances · {{ status.remaining_count }} restantes ({{ status.remaining_payments_cents|money }})
+    {% if status.interest_cents %} · coût total des intérêts {{ status.interest_cents|money }}{% endif %}</div>
+  {% if txs %}<a class="sub" href="/transactions?loan={{ loan.id }}">Voir les {{ txs|length }} mensualité(s) retrouvée(s) sur le compte →</a>{% endif %}
+  {{ m.attachments(docs, '/loans/' ~ loan.id) }}
+</div>
+{% endif %}
+<form method="post" action="/loans{{ '/' ~ loan.id if loan }}" enctype="multipart/form-data" class="card">
+  <label>Nom</label><input name="name" value="{{ loan.name if loan }}" placeholder="ex : Prêt maison" required>
+  <div class="grid2">
+    <div><label>Organisme</label><input name="lender" value="{{ loan.lender if loan }}" placeholder="ex : Cetelem"></div>
+    <div><label>Type</label><select name="kind">{% for k, v in kinds.items() %}<option value="{{ k }}" {{ 'selected' if loan and loan.kind == k }}>{{ v }}</option>{% endfor %}</select></div>
+    <div><label>Montant emprunté</label><input name="principal" inputmode="decimal" value="{{ loan.principal_cents|eur if loan }}"></div>
+    <div><label>Taux annuel (%)</label><input name="rate" inputmode="decimal" value="{{ loan.rate if loan else '' }}"></div>
+    <div><label>Mensualité totale</label><input name="monthly" inputmode="decimal" value="{{ loan.monthly_cents|eur if loan }}" required></div>
+    <div><label>dont assurance</label><input name="insurance" inputmode="decimal" value="{{ loan.insurance_cents|eur if loan }}"></div>
+    <div><label>1re échéance</label><input type="date" name="start_date" value="{{ loan.start_date.isoformat() if loan else today.isoformat() }}"></div>
+    <div><label>Durée (mois)</label><input name="duration_months" inputmode="numeric" value="{{ loan.duration_months if loan else 12 }}"></div>
+  </div>
+  <label>Mot du libellé bancaire <span class="sub">(pour retrouver les prélèvements, ex : CETELEM)</span></label>
+  <input name="match_pattern" value="{{ loan.match_pattern if loan }}">
+  <label>Notes</label><textarea name="notes">{{ loan.notes if loan }}</textarea>
+  {{ m.file_input('Contrat / tableau d\'amortissement') }}
+  {% if loan %}<label class="check"><input type="checkbox" name="active" value="1" {{ 'checked' if loan.active }}> Crédit en cours</label>{% endif %}
+  <button class="btn block" type="submit">Enregistrer</button>
+  {% if loan %}<button class="btn block danger" name="action" value="delete" data-confirm="Supprimer ce crédit ?">Supprimer</button>{% endif %}
+</form>
+{% endblock %}

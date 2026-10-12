@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block back %}<a class="back" href="/more">‹</a>{% endblock %}
+{% block heading %}Tags{% endblock %}
+{% block content %}
+<p class="sub" style="margin-top:0">Touchez un tag pour retrouver toutes ses opérations et leur total.</p>
+<div class="card flush">
+  <ul class="list">
+    {% for tag, count, total in rows %}
+    <li>
+      <a class="row" href="/transactions?tag={{ tag.name|urlencode }}">
+        <div class="ico">#</div>
+        <div class="grow"><div>{{ tag.name }}</div><div class="sub">{{ count }} opération(s)</div></div>
+        <div class="amt">{{ total|smoney }}</div>
+      </a>
+      {% if not count %}
+      <form method="post" action="/tags/{{ tag.id }}/delete"><button class="btn small danger" name="x" value="1">✕</button></form>
+      {% endif %}
+    </li>
+    {% else %}
+    <li class="empty" style="display:block">Pas encore de tag. Ajoutez-en depuis une opération.</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endblock %}

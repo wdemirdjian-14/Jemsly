@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block back %}<a class="back" href="/insurances">‹</a>{% endblock %}
+{% block heading %}{{ ins.name if ins else 'Nouveau contrat' }}{% endblock %}
+{% block content %}
+{% if ins %}
+<div class="card">
+  <div class="grid2">
+    <div><div class="sub">Payé sur 12 mois</div><div class="amt" style="font-size:20px">{{ paid_12m|money }}</div></div>
+    <div><div class="sub">Prochaine échéance</div><div class="amt" style="font-size:20px">{{ ins.next_due|d or '—' }}</div></div>
+  </div>
+  {% if txs %}<a class="sub" href="/transactions?insurance={{ ins.id }}">Voir les {{ txs|length }} paiement(s) →</a>{% endif %}
+  {{ m.attachments(docs, '/insurances/' ~ ins.id) }}
+</div>
+{% endif %}
+<form method="post" action="/insurances{{ '/' ~ ins.id if ins }}" enctype="multipart/form-data" class="card">
+  <label>Nom du contrat</label><input name="name" value="{{ ins.name if ins }}" placeholder="ex : Assurance Mini" required>
+  <div class="grid2">
+    <div><label>Assureur</label><input name="insurer" value="{{ ins.insurer if ins }}" placeholder="ex : AXA"></div>
+    <div><label>Type</label><select name="kind">{% for k in kinds %}<option {{ 'selected' if ins and ins.kind == k }}>{{ k }}</option>{% endfor %}</select></div>
+    <div><label>Montant de l'échéance</label><input name="premium" inputmode="decimal" value="{{ ins.premium_cents|eur if ins }}"></div>
+    <div><label>Fréquence</label><select name="frequency">{% for k, v in FREQUENCIES.items() if k != 'hebdo' %}<option value="{{ k }}" {{ 'selected' if ins and ins.frequency == k }}>{{ v }}</option>{% endfor %}</select></div>
+    <div><label>Prochain prélèvement</label><input type="date" name="next_due" value="{{ ins.next_due.isoformat() if ins and ins.next_due }}"></div>
+    <div><label>Échéance annuelle</label><input type="date" name="renewal_date" value="{{ ins.renewal_date.isoformat() if ins and ins.renewal_date }}"></div>
+  </div>
+  <label>N° de contrat</label><input name="contract_number" value="{{ ins.contract_number if ins }}">
+  <label>Assuré / concerné</label>{{ m.person_select(persons, ins.person_id if ins, '— Toute la famille —') }}
+  <label>Mot du libellé bancaire <span class="sub">(par défaut : l'assureur)</span></label>
+  <input name="match_pattern" value="{{ ins.match_pattern if ins }}" placeholder="ex : AXA">
+  <label>Notes (garanties, franchise, contact…)</label><textarea name="notes">{{ ins.notes if ins }}</textarea>
+  {{ m.file_input('Contrat / attestation') }}
+  {% if ins %}<label class="check"><input type="checkbox" name="active" value="1" {{ 'checked' if ins.active }}> Contrat actif</label>{% endif %}
+  <button class="btn block" type="submit">Enregistrer</button>
+  {% if ins %}<button class="btn block danger" name="action" value="delete" data-confirm="Supprimer ce contrat ?">Supprimer</button>{% endif %}
+</form>
+{% endblock %}

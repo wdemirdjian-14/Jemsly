@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block back %}<a class="back" href="/more">‹</a>{% endblock %}
+{% block heading %}Crédits{% endblock %}
+{% block topright %}<a href="/loans/new" class="btn small">+ Ajouter</a>{% endblock %}
+{% block content %}
+<div class="grid2">
+  <div class="stat"><div class="l">Capital restant dû</div><div class="v">{{ total_remaining|money }}</div></div>
+  <div class="stat"><div class="l">Mensualités</div><div class="v">{{ monthly|money }}</div></div>
+</div>
+<div class="card flush" style="margin-top:12px">
+  <ul class="list">
+    {% for l, s in rows %}
+    <li><a class="row" href="/loans/{{ l.id }}">
+      <div class="ico">🏦</div>
+      <div class="grow">
+        <div class="ell">{{ l.name }} {% if not l.active %}<span class="chip grey">clos</span>{% endif %}</div>
+        <div class="sub">{{ l.lender }} · {{ kinds.get(l.kind, l.kind) }} · fin {{ s.end_date.strftime('%m/%Y') }}</div>
+        <div class="bar"><span style="width:{{ s.progress }}%"></span></div>
+        <div class="sub">{{ s.paid_count }}/{{ s.count }} échéances · reste {{ s.remaining_cents|money }}</div>
+      </div>
+      <div class="amt">{{ l.monthly_cents|money }}</div>
+    </a></li>
+    {% else %}
+    <li class="empty" style="display:block"><div class="i">🏦</div>Aucun crédit enregistré.</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endblock %}

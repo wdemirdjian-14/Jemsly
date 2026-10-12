@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#5b4bff">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Connexion · {{ APP_NAME }}</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <link rel="stylesheet" href="/static/style.css?v=1">
+</head>
+<body style="padding-bottom:0">
+  <div class="login">
+    <div style="text-align:center"><img src="/static/icon.svg" width="72" height="72" alt=""></div>
+    <h1 style="text-align:center">{{ APP_NAME }}</h1>
+    <div class="card">
+      {% if not configured %}
+      <p>⚠️ Aucun mot de passe n'est configuré. Définissez <code>APP_PASSWORD</code> dans le fichier <code>.env</code> du serveur puis redémarrez.</p>
+      {% endif %}
+      {% if error %}<div class="alert bad">{{ error }}</div>{% endif %}
+      <form method="post" action="/login">
+        <label for="pw">Mot de passe</label>
+        <input id="pw" type="password" name="password" autocomplete="current-password" autofocus required>
+        <button class="btn block" type="submit">Se connecter</button>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

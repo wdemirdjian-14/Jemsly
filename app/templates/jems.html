@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block back %}<a class="back" href="/more">‹</a>{% endblock %}
+{% block heading %}Notes de frais Jems{% endblock %}
+{% block content %}
+<form method="get" action="/jems" data-autosubmit class="filters">
+  <input type="month" name="month" value="{{ month }}">
+  <select name="status">
+    <option value="">Tous statuts</option>
+    {% for k, v in JEMS_STATUSES.items() %}<option value="{{ k }}" {{ 'selected' if status == k }}>{{ v }}</option>{% endfor %}
+  </select>
+</form>
+<div class="grid3">
+  {% for k, v in JEMS_STATUSES.items() %}
+  <a class="stat" href="/jems?month={{ month }}&status={{ k }}"><div class="l">{{ v }}</div><div class="v" style="font-size:15px">{{ totals[k]|money }}</div></a>
+  {% endfor %}
+</div>
+{% if missing %}<div class="alert warn" style="margin-top:12px"><b>📎 {{ missing }} dépense(s) sans justificatif</b>Ajoutez la facture depuis le détail de l'opération.</div>{% endif %}
+
+<form method="post" action="/jems/status" style="margin-top:12px">
+  <input type="hidden" name="month" value="{{ month }}"><input type="hidden" name="status" value="{{ status }}">
+  <div class="card flush">
+    <label class="check row" style="margin:0"><input type="checkbox" data-check-all="ids"> Tout sélectionner · total {{ total|money }}</label>
+    <ul class="list">
+      {% for t in rows %}
+      <li>
+        <input type="checkbox" name="ids" value="{{ t.id }}">
+        <a class="row" href="/transactions/{{ t.id }}?back=/jems">
+          <div class="grow"><div class="ell">{{ t.label }}</div>
+            <div class="sub">{{ t.date|d }} · {{ t.category.name if t.category else '—' }} · {{ JEMS_STATUSES.get(t.jems_status, '') }}{% if not t.attachments %} · <span style="color:var(--warn)">sans justificatif</span>{% else %} · 📎{% endif %}</div></div>
+          <div class="amt {{ 'pos' if t.amount_cents > 0 }}">{{ t.amount_cents|smoney }}</div>
+        </a>
+      </li>
+      {% else %}
+      <li class="empty" style="display:block">Aucune dépense Jems. Choisissez le périmètre « Jems » sur une opération ou un achat.</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% if rows %}
+  <div class="actions">
+    <select name="new_status" style="flex:1">{% for k, v in JEMS_STATUSES.items() %}<option value="{{ k }}">Passer en « {{ v }} »</option>{% endfor %}</select>
+    <button class="btn" type="submit">Appliquer</button>
+  </div>
+  {% endif %}
+</form>
+{% if rows %}
+<a class="btn ghost block" href="/jems/export?month={{ month }}&status={{ status }}">⤓ Exporter la note de frais (CSV + justificatifs)</a>
+{% endif %}
+{% endblock %}

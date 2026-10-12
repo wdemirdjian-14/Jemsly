@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block back %}<a class="back" href="/more">‹</a>{% endblock %}
+{% block heading %}Assurances{% endblock %}
+{% block topright %}<a href="/insurances/new" class="btn small">+ Ajouter</a>{% endblock %}
+{% block content %}
+<div class="stat"><div class="l">Coût annuel total</div><div class="v">{{ yearly|money }} <span class="sub">soit {{ (yearly / 12)|round|int|money }}/mois</span></div></div>
+<div class="card flush" style="margin-top:12px">
+  <ul class="list">
+    {% for i in rows %}
+    <li><a class="row" href="/insurances/{{ i.id }}">
+      <div class="ico">🛡️</div>
+      <div class="grow">
+        <div class="ell">{{ i.name }} {% if not i.active %}<span class="chip grey">résilié</span>{% endif %}</div>
+        <div class="sub">{{ i.insurer }} · {{ i.kind }}{% if i.person %} · {{ i.person.name }}{% endif %}{% if i.renewal_date %} · échéance {{ i.renewal_date|d }}{% endif %}</div>
+      </div>
+      <div class="right"><div class="amt">{{ i.premium_cents|money }}</div><div class="sub">{{ FREQUENCIES.get(i.frequency, '')|lower }}</div></div>
+    </a></li>
+    {% else %}
+    <li class="empty" style="display:block"><div class="i">🛡️</div>Aucun contrat. Ajoutez vos assurances (auto, habitation, mutuelle…) pour suivre leurs coûts et échéances.</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endblock %}

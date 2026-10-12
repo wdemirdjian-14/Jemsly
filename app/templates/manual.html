@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block back %}<a class="back" href="/transactions">‹</a>{% endblock %}
+{% block heading %}Saisir une opération{% endblock %}
+{% block content %}
+<p class="sub" style="margin-top:0">Pour une opération déjà passée sur un compte sans relevé (espèces, compte secondaire…). Pour un achat qui n'est pas encore débité, utilisez plutôt <a href="/pending/new">+ Achat</a>.</p>
+<form method="post" action="/manual" class="card">
+  <div class="seg">
+    <label><input type="radio" name="direction" value="out" checked>Sortie</label>
+    <label><input type="radio" name="direction" value="in">Entrée</label>
+  </div>
+  <input class="amount-input" name="amount" inputmode="decimal" placeholder="0,00 €" required style="margin-top:12px">
+  <label>Libellé</label><input name="label" required>
+  <div class="grid2">
+    <div><label>Date</label><input type="date" name="date" value="{{ today.isoformat() }}"></div>
+    <div><label>Compte</label><select name="account_id">{% for a in accounts %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}</select></div>
+  </div>
+  <button class="btn block" type="submit">Ajouter</button>
+</form>
+{% endblock %}

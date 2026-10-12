@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block back %}<a class="back" href="/installments">‹</a>{% endblock %}
+{% block heading %}{{ plan.label if plan else 'Paiement en plusieurs fois' }}{% endblock %}
+{% block content %}
+{% if plan %}
+<div class="card flush">
+  <ul class="list">
+    {% for it in plan.items %}
+    <li>
+      <div class="ico">{{ '✅' if it.transaction_id else ('⚠️' if it.due_date < today else '🗓️') }}</div>
+      <div class="grow"><div>Échéance {{ loop.index }}/{{ plan.count }}</div>
+        <div class="sub">{{ it.due_date|d }}{% if it.transaction_id %} · <a href="/transactions/{{ it.transaction_id }}">débitée</a>{% endif %}</div></div>
+      <div class="amt">{{ it.amount_cents|money }}</div>
+      <form method="post" action="/installments/items/{{ it.id }}/toggle"><button class="btn small ghost" name="x" value="1">{{ '↺' if it.transaction_id else 'Chercher' }}</button></form>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+<form method="post" action="/installments{{ '/' ~ plan.id if plan }}" class="card">
+  <label>Achat</label><input name="label" value="{{ plan.label if plan }}" placeholder="ex : Canapé" required>
+  <div class="grid2">
+    <div><label>Organisme / marchand</label><input name="merchant" value="{{ plan.merchant if plan }}" placeholder="ex : Alma, Oney, Klarna"></div>
+    <div><label>Montant total (frais inclus)</label><input name="total" inputmode="decimal" value="{{ plan.total_cents|eur if plan }}" required></div>
+    <div><label>Nombre d'échéances</label><input name="count" inputmode="numeric" value="{{ plan.count if plan else 3 }}"></div>
+    <div><label>1re échéance</label><input type="date" name="first_date" value="{{ plan.first_date.isoformat() if plan else today.isoformat() }}"></div>
+  </div>
+  <label>Mot du libellé bancaire <span class="sub">(facultatif, ex : ALMA)</span></label>
+  <input name="match_pattern" value="{{ plan.match_pattern if plan }}">
+  <label>Catégorie</label>{{ m.category_select(categories, plan.category_id if plan) }}
+  <label>Pour qui</label>{{ m.person_select(persons, plan.person_id if plan) }}
+  <label>Périmètre</label>{{ m.scope_seg(plan.scope if plan else 'famille') }}
+  <label>Notes</label><textarea name="notes">{{ plan.notes if plan }}</textarea>
+  <button class="btn block" type="submit">Enregistrer</button>
+  {% if plan %}<button class="btn block danger" name="action" value="delete" data-confirm="Supprimer ce paiement ?">Supprimer</button>{% endif %}
+</form>
+{% endblock %}

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#5b4bff">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="robots" content="noindex, nofollow">
+  <title>{% block title %}{{ APP_NAME }}{% endblock %}</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <link rel="stylesheet" href="/static/style.css?v=1">
+</head>
+<body>
+  <header class="top">
+    {% block back %}{% endblock %}
+    <div class="title">{% block heading %}{{ APP_NAME }}{% endblock %}</div>
+    {% block topright %}{% endblock %}
+  </header>
+  <main class="wrap">
+    {% if flash %}<div class="flash">{{ flash }}</div>{% endif %}
+    {% block content %}{% endblock %}
+  </main>
+  <nav class="nav">
+    <a href="/" class="{{ 'on' if path == '/' }}"><span class="i">🏠</span>Accueil</a>
+    <a href="/transactions" class="{{ 'on' if path.startswith('/transactions') }}"><span class="i">📋</span>Opérations</a>
+    <a href="/pending/new" class="fab" aria-label="Nouvel achat"><span class="i">+</span>Achat</a>
+    <a href="/inbox" class="{{ 'on' if path in ('/inbox', '/pending') }}"><span class="i">📥</span>À trier
+      {% if nav_inbox %}<span class="badge">{{ nav_inbox }}</span>{% endif %}</a>
+    <a href="/more" class="{{ 'on' if path == '/more' }}"><span class="i">☰</span>Plus</a>
+  </nav>
+  <script src="/static/app.js?v=1" defer></script>
+</body>
+</html>

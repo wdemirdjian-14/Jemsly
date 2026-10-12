@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block heading %}À trier{% endblock %}
+{% block content %}
+<div class="seg" style="margin-bottom:12px">
+  <label onclick="location.href='/inbox'">📥 À catégoriser ({{ nav_inbox }})</label>
+  <label style="background:var(--card);font-weight:600;color:var(--primary)">⏳ Achats en attente ({{ waiting|length }})</label>
+</div>
+{% if waiting %}
+<div class="card"><div class="sub">Pas encore débité</div><div class="amt" style="font-size:22px">{{ total|smoney }}</div>
+  <div class="sub">Déjà déduit du « disponible réel » de l'accueil.</div></div>
+{% endif %}
+<div class="card flush">
+  <ul class="list">
+    {% for p in waiting %}
+    <li><a class="row" href="/pending/{{ p.id }}">
+      <div class="ico">{{ p.category.icon if p.category else '⏳' }}</div>
+      <div class="grow"><div class="ell">{{ p.label }}</div>
+        <div class="sub">{{ p.date|d }}{% if p.person %} · {{ p.person.name }}{% endif %}{% if p.scope == 'jems' %} · Jems{% endif %}{% if p.attachments %} · 📎{% endif %}</div></div>
+      <div class="amt {{ 'pos' if p.amount_cents > 0 }}">{{ p.amount_cents|smoney }}</div>
+    </a></li>
+    {% else %}
+    <li class="empty" style="display:block"><div class="i">🧾</div>Aucun achat en attente.<br><a href="/pending/new">Noter un achat</a></li>
+    {% endfor %}
+  </ul>
+</div>
+{% if done %}
+<h2>Récemment rapprochés</h2>
+<div class="card flush"><ul class="list">
+  {% for p in done %}
+  <li><a class="row" href="/pending/{{ p.id }}">
+    <div class="grow"><div class="ell">{{ p.label }}</div><div class="sub">{{ p.date|d }}</div></div>
+    <span class="chip {{ 'good' if p.status == 'rapproche' else 'grey' }}">{{ 'rapproché' if p.status == 'rapproche' else 'annulé' }}</span>
+    <div class="amt">{{ p.amount_cents|smoney }}</div>
+  </a></li>
+  {% endfor %}
+</ul></div>
+{% endif %}
+{% endblock %}
