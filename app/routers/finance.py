@@ -105,6 +105,8 @@ async def loan_save(request: Request, lid: int | None = None, db: Session = Depe
     loan.insurance_cents = abs(fcents(f.get("insurance"), 0))
     loan.start_date = fdate(f.get("start_date"), date.today())
     loan.duration_months = fint(f.get("duration_months")) or 0
+    loan.known_remaining_cents = abs(fcents(f.get("known_remaining"))) if fcents(f.get("known_remaining")) is not None else None
+    loan.known_remaining_at = fdate(f.get("known_remaining_at"))
     loan.match_pattern = f.get("match_pattern", "").strip()
     loan.notes = f.get("notes", "").strip()
     loan.active = bool(f.get("active")) or not lid

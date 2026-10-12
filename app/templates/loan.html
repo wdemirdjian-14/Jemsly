@@ -5,7 +5,15 @@
 {% block content %}
 {% if loan %}
 <div class="card">
-  {% if status.count %}
+  {% if status.estimated %}
+  <div class="grid2">
+    <div><div class="sub">Capital restant dû (estimé)</div><div class="amt" style="font-size:22px">{{ status.remaining_cents|money }}</div></div>
+    <div><div class="sub">Fin estimée</div><div class="amt" style="font-size:22px">{{ status.end_date.strftime('%m/%Y') if status.end_date else 'soldé' }}</div></div>
+  </div>
+  {% if status.progress %}<div class="bar" style="margin-top:12px"><span style="width:{{ status.progress }}%"></span></div>{% endif %}
+  <div class="sub">≈ {{ status.remaining_count }} mensualité(s) restante(s) ({{ status.remaining_payments_cents|money }}) · d'après le restant dû de {{ loan.known_remaining_cents|money }} au {{ loan.known_remaining_at|d }}
+    {% if not status.rate_known %}<br><span style="color:var(--warn)">Sans le taux, les intérêts sont ignorés : la fin réelle sera un peu plus tardive.</span>{% endif %}</div>
+  {% elif status.count %}
   <div class="grid2">
     <div><div class="sub">Capital restant dû</div><div class="amt" style="font-size:22px">{{ status.remaining_cents|money if status.remaining_cents is not none else 'à compléter' }}</div></div>
     <div><div class="sub">Fin du crédit</div><div class="amt" style="font-size:22px">{{ status.end_date.strftime('%m/%Y') }}</div></div>
@@ -30,6 +38,8 @@
     <div><label>Mensualité totale</label><input name="monthly" inputmode="decimal" value="{{ loan.monthly_cents|eur if loan }}" required></div>
     <div><label>dont assurance</label><input name="insurance" inputmode="decimal" value="{{ loan.insurance_cents|eur if loan }}"></div>
     <div><label>1re échéance</label><input type="date" name="start_date" value="{{ loan.start_date.isoformat() if loan else today.isoformat() }}"></div>
+    <div><label>Restant dû (appli banque)</label><input name="known_remaining" inputmode="decimal" value="{{ loan.known_remaining_cents|eur if loan }}"></div>
+    <div><label>… au</label><input type="date" name="known_remaining_at" value="{{ loan.known_remaining_at.isoformat() if loan and loan.known_remaining_at }}"></div>
     <div><label>Durée (mois)</label><input name="duration_months" inputmode="numeric" value="{{ loan.duration_months if loan and loan.duration_months else '' }}" placeholder="inconnue"></div>
   </div>
   <label>Mot du libellé bancaire <span class="sub">(pour retrouver les prélèvements, ex : CETELEM)</span></label>

@@ -312,6 +312,8 @@ def pending_total(db: Session) -> int:
 
 def loan_status(loan: Loan, today: date | None = None) -> dict:
     today = today or date.today()
+    if loan.known_remaining_cents is not None and loan.known_remaining_at and loan.monthly_cents:
+        return _loan_from_remaining(loan, today)
     if not loan.duration_months:  # durée inconnue : on suit les mensualités sans projeter la fin
         return {"paid_count": None, "count": None, "remaining_count": None, "remaining_cents": None,
                 "end_date": None, "next_date": None, "progress": 0, "interest_cents": 0,
@@ -339,6 +341,41 @@ def loan_status(loan: Loan, today: date | None = None) -> dict:
         "next_date": d if k < n else None, "progress": round(100 * k / n),
         "interest_cents": max(total_cost, 0),
         "remaining_payments_cents": (n - k) * loan.monthly_cents,
+    }
+
+
+def _loan_from_remaining(loan: Loan, today: date) -> dict:
+    """Projection à partir du « restant dû » connu à une date : mensualités passées depuis, mois restants,
+    date de fin. Sans taux, l'estimation ignore les intérêts (fin un peu optimiste)."""
+    import math
+
+    r = (loan.rate or 0) / 100 / 12
+    m = max(loan.monthly_cents - loan.insurance_cents, 1)
+    day = loan.start_date.day if loan.start_date else 5
+    d = loan.known_remaining_at
+    first = date(d.year, d.month, min(day, 28))
+    if first <= d:
+        first = add_months(first, 1)
+    k, nxt = 0, first
+    while nxt <= today:
+        k += 1
+        nxt = add_months(first, k)
+    rem = loan.known_remaining_cents
+    rem = rem * (1 + r) ** k - m * (((1 + r) ** k - 1) / r) if r > 0 else rem - m * k
+    rem = max(round(rem), 0)
+    if rem == 0:
+        left = 0
+    elif r > 0 and r * rem < m:
+        left = math.ceil(-math.log(1 - r * rem / m) / math.log(1 + r))
+    else:
+        left = math.ceil(rem / m)
+    p = loan.principal_cents
+    return {
+        "paid_count": None, "count": None, "remaining_count": left, "remaining_cents": rem,
+        "end_date": add_months(nxt, left - 1) if left else None, "next_date": nxt if left else None,
+        "progress": round(100 * (1 - rem / p)) if p else 0,
+        "interest_cents": max(left * m - rem, 0) if r > 0 else 0,
+        "remaining_payments_cents": left * loan.monthly_cents, "estimated": True, "rate_known": r > 0,
     }
 
 
@@ -374,8 +411,11 @@ def upcoming(db: Session, start: date, end: date) -> list[Expected]:
                                     f"/insurances/{ins.id}", late=d < today))
             d = next_occurrence(d, ins.frequency)
     for loan in db.scalars(select(Loan).where(Loan.active.is_(True))):
+        st = loan_status(loan)
         for k in range(loan.duration_months or 1200):
             d = add_months(loan.start_date, k)
+            if st.get("end_date") and d > st["end_date"]:
+                break
             if d > end:
                 break
             if d >= start:

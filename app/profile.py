@@ -98,6 +98,9 @@ def apply_profile(db: Session, data: dict) -> dict:
         l.duration_months = int(item.get("duration_months") or 0)
         l.start_date = _date(item.get("start_date")) or date.today()
         l.notes = item.get("notes", l.notes or "")
+        l.known_remaining_cents = abs(_cents(item["remaining"])) if item.get("remaining") is not None else None
+        l.known_remaining_at = _date(item.get("remaining_at"))
+        l.active = item.get("active", True)
         db.add(l)
     stats["crédits"] = len(data.get("loans", []))
 

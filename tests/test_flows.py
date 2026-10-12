@@ -220,3 +220,16 @@ def test_settings_crud(client, db):
     client.post("/settings/categories", data={"id": str(cat.id), "action": "delete"})
     db.expire_all()
     assert db.scalar(select(Category).where(Category.name == "Divers")) is None
+
+
+def test_loan_from_known_remaining():
+    from app.models import Loan
+    loan = Loan(name="P", monthly_cents=50000, insurance_cents=0, rate=0, start_date=date(2026, 1, 5),
+                duration_months=0, principal_cents=3000000, known_remaining_cents=1000000,
+                known_remaining_at=date(2026, 10, 1))
+    st = loan_status(loan, today=date(2026, 12, 10))  # 2 mensualités (5/10, 5/11, 5/12 -> 3) depuis
+    assert st["estimated"] and st["remaining_cents"] == 1000000 - 3 * 50000
+    assert st["remaining_count"] == 17 and st["end_date"] == date(2028, 5, 5)
+    loan.rate = 3.0
+    st = loan_status(loan, today=date(2026, 12, 10))
+    assert st["remaining_count"] >= 17 and st["interest_cents"] > 0

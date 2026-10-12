@@ -82,6 +82,9 @@ class Loan(Base):
     account_id: Mapped[int | None] = mapped_column(ForeignKey("accounts.id"), nullable=True)
     notes: Mapped[str] = mapped_column(Text, default="")
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # « Restant dû » relevé dans l'appli de la banque (quand durée/taux ne sont pas connus)
+    known_remaining_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    known_remaining_at: Mapped[date | None] = mapped_column(Date, nullable=True)
 
 
 class Insurance(Base):
