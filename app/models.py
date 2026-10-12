@@ -262,3 +262,13 @@ class MonthlyReport(Base):
     month: Mapped[str] = mapped_column(String(7), unique=True)  # AAAA-MM
     content: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+
+
+class User(Base):
+    __tablename__ = "users"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    username: Mapped[str] = mapped_column(String(60), unique=True)
+    password_hash: Mapped[str] = mapped_column(String(200))
+    env_fingerprint: Mapped[str] = mapped_column(String(200), default="")  # dernier APP_PASSWORD appliqué
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    last_login: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

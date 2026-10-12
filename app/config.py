@@ -5,6 +5,7 @@ DATA_DIR = Path(os.environ.get("DATA_DIR", Path(__file__).resolve().parent.paren
 UPLOAD_DIR = DATA_DIR / "uploads"
 DB_PATH = DATA_DIR / "wazzzxpense.db"
 
+APP_USERNAME = os.environ.get("APP_USERNAME", "warren")
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "0") == "1"
 

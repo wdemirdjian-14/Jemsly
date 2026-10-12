@@ -233,3 +233,32 @@ def test_loan_from_known_remaining():
     loan.rate = 3.0
     st = loan_status(loan, today=date(2026, 12, 10))
     assert st["remaining_count"] >= 17 and st["interest_cents"] > 0
+
+
+def test_users_login_and_access(client, db):
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from app.models import User
+    anon = TestClient(app)
+    assert anon.post("/login", data={"username": "inconnu", "password": "secret"}).status_code == 401
+    assert anon.post("/login", data={"username": "warren", "password": "mauvais"}).status_code == 401
+    assert anon.get("/transactions", follow_redirects=False).headers["location"] == "/login"
+    # création d'un accès pour Laura
+    client.post("/settings/users", data={"action": "create", "username": "Laura", "password": "court",
+                                         "password2": "court"})
+    assert db.scalar(select(User).where(User.username == "laura")) is None  # trop court
+    client.post("/settings/users", data={"action": "create", "username": "Laura", "password": "tres-long-mdp",
+                                         "password2": "tres-long-mdp"})
+    laura = TestClient(app)
+    assert laura.post("/login", data={"username": "laura", "password": "tres-long-mdp"},
+                      follow_redirects=False).status_code == 303
+    assert laura.get("/").status_code == 200
+    # suppression : la session de Laura est immédiatement révoquée
+    uid = db.scalar(select(User).where(User.username == "laura")).id
+    client.post("/settings/users", data={"action": "delete", "id": str(uid)})
+    assert laura.get("/", follow_redirects=False).headers["location"] == "/login"
+    # changement de mot de passe
+    client.post("/settings/users", data={"action": "password", "current": "secret", "password": "nouveau-mdp-123",
+                                         "password2": "nouveau-mdp-123"})
+    assert anon.post("/login", data={"username": "warren", "password": "nouveau-mdp-123"},
+                     follow_redirects=False).status_code == 303

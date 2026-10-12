@@ -1,6 +1,7 @@
 """Paramètres : comptes, catégories, personnes, règles, sauvegarde."""
 import io
 import json
+import re
 import sqlite3
 import tempfile
 import zipfile
@@ -12,10 +13,11 @@ from fastapi.responses import Response
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
+from ..auth import MIN_LENGTH, hash_password, normalize_username, verify_password
 from ..config import DB_PATH, UPLOAD_DIR
 from ..db import get_db
 from ..models import (
-    Account, Category, InstallmentPlan, Insurance, Pending, Person, Recurrence, Rule, Transaction,
+    Account, Category, InstallmentPlan, Insurance, Pending, Person, Recurrence, Rule, Transaction, User,
 )
 from ..profile import apply_profile
 from ..services import account_balance, apply_auto, recategorize_all
@@ -46,7 +48,8 @@ def settings(request: Request, db: Session = Depends(get_db)):
     lk = lookups(db)
     all_accounts = db.scalars(select(Account).order_by(Account.archived, Account.id)).all()
     return render(request, db, "settings.html", all_accounts=[(a, account_balance(db, a)) for a in all_accounts],
-                  rules=db.scalars(select(Rule).order_by(Rule.priority, Rule.pattern)).all(), **lk)
+                  rules=db.scalars(select(Rule).order_by(Rule.priority, Rule.pattern)).all(),
+                  users=db.scalars(select(User).order_by(User.username)).all(), me=request.session.get("uid"), **lk)
 
 
 @router.post("/settings/accounts")
@@ -124,6 +127,41 @@ async def rule_save(request: Request, db: Session = Depends(get_db)):
     db.add(r)
     db.commit()
     return redirect(request, "/settings#regles", "Règle enregistrée.")
+
+
+@router.post("/settings/users")
+async def user_save(request: Request, db: Session = Depends(get_db)):
+    f = await request.form()
+    action = f.get("action", "create")
+    me = db.get(User, request.session.get("uid"))
+    if action == "delete":
+        u = db.get(User, fint(f.get("id")) or 0)
+        if u and u.id != me.id:
+            db.delete(u)
+            db.commit()
+            return redirect(request, "/settings#utilisateurs", f"Accès de « {u.username} » supprimé.")
+        return redirect(request, "/settings#utilisateurs", "Vous ne pouvez pas supprimer votre propre compte.")
+    password = f.get("password", "")
+    if len(password) < MIN_LENGTH:
+        return redirect(request, "/settings#utilisateurs",
+                        f"Mot de passe trop court ({MIN_LENGTH} caractères minimum).")
+    if password != f.get("password2", ""):
+        return redirect(request, "/settings#utilisateurs", "Les deux mots de passe ne correspondent pas.")
+    if action == "password":
+        if not verify_password(f.get("current", ""), me.password_hash):
+            return redirect(request, "/settings#utilisateurs", "Mot de passe actuel incorrect.")
+        me.password_hash = hash_password(password)
+        db.commit()
+        return redirect(request, "/settings#utilisateurs", "Mot de passe modifié.")
+    name = normalize_username(f.get("username", ""))
+    if not re.fullmatch(r"[a-z0-9._-]{3,40}", name):
+        return redirect(request, "/settings#utilisateurs",
+                        "Identifiant invalide (3 à 40 caractères : lettres, chiffres, . _ -).")
+    if db.scalar(select(User).where(User.username == name)):
+        return redirect(request, "/settings#utilisateurs", "Cet identifiant existe déjà.")
+    db.add(User(username=name, password_hash=hash_password(password)))
+    db.commit()
+    return redirect(request, "/settings#utilisateurs", f"Accès créé pour « {name} ».")
 
 
 @router.post("/settings/profile")

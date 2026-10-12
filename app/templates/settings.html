@@ -120,6 +120,43 @@
   </form>
 </details>
 
+<h2 id="utilisateurs">Utilisateurs</h2>
+<div class="card">
+  <p class="sub" style="margin-top:0">Seules ces personnes peuvent se connecter. Le site n'affiche rien sans identifiant et mot de passe.</p>
+  {% for u in users %}
+  <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)">
+    <div class="grow">👤 <b>{{ u.username }}</b>{% if u.id == me %} <span class="chip">vous</span>{% endif %}
+      <div class="sub">{% if u.last_login %}dernière connexion {{ u.last_login.strftime('%d/%m/%Y %H:%M') }}{% else %}jamais connecté{% endif %}</div></div>
+    {% if u.id != me %}
+    <form method="post" action="/settings/users"><input type="hidden" name="id" value="{{ u.id }}">
+      <button class="btn small danger" name="action" value="delete" data-confirm="Supprimer l'accès de {{ u.username }} ?">Supprimer</button></form>
+    {% endif %}
+  </div>
+  {% endfor %}
+  <details style="margin-top:10px"><summary><b>+ Donner un accès</b> (ex. Laura)</summary>
+    <form method="post" action="/settings/users">
+      <input type="hidden" name="action" value="create">
+      <label>Identifiant</label><input name="username" autocapitalize="none" autocorrect="off" required>
+      <div class="grid2">
+        <div><label>Mot de passe (10 car. min.)</label><input type="password" name="password" autocomplete="new-password" required></div>
+        <div><label>Confirmation</label><input type="password" name="password2" autocomplete="new-password" required></div>
+      </div>
+      <button class="btn small" type="submit" style="margin-top:12px">Créer l'accès</button>
+    </form>
+  </details>
+  <details style="margin-top:10px"><summary><b>🔑 Changer mon mot de passe</b></summary>
+    <form method="post" action="/settings/users">
+      <input type="hidden" name="action" value="password">
+      <label>Mot de passe actuel</label><input type="password" name="current" autocomplete="current-password" required>
+      <div class="grid2">
+        <div><label>Nouveau</label><input type="password" name="password" autocomplete="new-password" required></div>
+        <div><label>Confirmation</label><input type="password" name="password2" autocomplete="new-password" required></div>
+      </div>
+      <button class="btn small" type="submit" style="margin-top:12px">Modifier</button>
+    </form>
+  </details>
+</div>
+
 <h2 id="profil">Profil du foyer</h2>
 <div class="card">
   <p style="margin-top:0">Importez un fichier profil (.json) : personnes, comptes, catégories, règles, crédits, assurances et

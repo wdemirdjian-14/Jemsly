@@ -69,7 +69,7 @@ IONOS : *Domaines & SSL › walautao.fr › DNS*).
 sudo mkdir -p /opt/wazzzxpense && sudo chown $USER /opt/wazzzxpense
 git clone -b claude/determined-ptolemy-gsbolc https://github.com/wdemirdjian-14/Jemsly.git /opt/wazzzxpense
 cd /opt/wazzzxpense
-cp .env.example .env && nano .env   # APP_PASSWORD (long !), ANTHROPIC_API_KEY (facultatif)
+cp .env.example .env && nano .env   # APP_USERNAME + APP_PASSWORD (long !), ANTHROPIC_API_KEY (facultatif)
 ./scripts/deploy.sh                 # l'app écoute sur 127.0.0.1:8765
 ```
 
@@ -112,7 +112,9 @@ Les archives vont dans `backups/` (30 jours). Copiez-les régulièrement hors du
 
 ## Sécurité & données
 
-- Accès protégé par mot de passe (cookie de session signé, HTTPS, limitation des tentatives).
+- Accès réservé : **identifiant + mot de passe** (haché PBKDF2), aucune page visible sans connexion, sessions
+  signées en HTTPS, limitation des tentatives. Comptes supplémentaires et changement de mot de passe dans
+  *Paramètres › Utilisateurs* ; mot de passe oublié : changer `APP_PASSWORD` dans `.env` et redéployer.
 - Toutes les données restent sur votre VPS (`./data` : base SQLite + factures). Rien n'est envoyé ailleurs, sauf
   si la clé Anthropic est configurée : les relevés PDF et le résumé du mois (libellés et montants) sont alors
   transmis à l'API Claude au moment où vous le demandez.
@@ -123,7 +125,7 @@ Les archives vont dans `backups/` (30 jours). Copiez-les régulièrement hors du
 ```bash
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements-dev.txt
-APP_PASSWORD=dev uvicorn app.main:app --reload     # http://127.0.0.1:8000
+APP_USERNAME=dev APP_PASSWORD=dev uvicorn app.main:app --reload     # http://127.0.0.1:8000
 pytest
 ```
 

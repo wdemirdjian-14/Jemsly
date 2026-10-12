@@ -17,12 +17,14 @@
     <h1 style="text-align:center">{{ APP_NAME }}</h1>
     <div class="card">
       {% if not configured %}
-      <p>⚠️ Aucun mot de passe n'est configuré. Définissez <code>APP_PASSWORD</code> dans le fichier <code>.env</code> du serveur puis redémarrez.</p>
+      <p>⚠️ Aucun compte n'est configuré. Définissez <code>APP_USERNAME</code> et <code>APP_PASSWORD</code> dans le fichier <code>.env</code> du serveur puis redémarrez.</p>
       {% endif %}
       {% if error %}<div class="alert bad">{{ error }}</div>{% endif %}
       <form method="post" action="/login">
+        <label for="un">Identifiant</label>
+        <input id="un" name="username" value="{{ username }}" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" autofocus required>
         <label for="pw">Mot de passe</label>
-        <input id="pw" type="password" name="password" autocomplete="current-password" autofocus required>
+        <input id="pw" type="password" name="password" autocomplete="current-password" required>
         <button class="btn block" type="submit">Se connecter</button>
       </form>
     </div>

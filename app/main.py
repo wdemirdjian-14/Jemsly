@@ -1,5 +1,5 @@
-import hmac
 import time
+from datetime import datetime
 from collections import defaultdict
 from pathlib import Path
 
@@ -9,8 +9,10 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from . import models  # noqa: F401  (enregistre les tables)
-from .config import APP_PASSWORD, COOKIE_SECURE, SECRET_KEY
+from .auth import authenticate, ensure_admin, has_users
+from .config import COOKIE_SECURE, SECRET_KEY
 from .db import SessionLocal, migrate
+from .models import User
 from .routers import core, finance, imports, reports, settings
 from .services import seed
 from .templating import templates
@@ -21,6 +23,7 @@ PUBLIC = ("/login", "/static/", "/manifest.webmanifest", "/sw.js", "/healthz")
 migrate()
 with SessionLocal() as _db:
     seed(_db)
+    ensure_admin(_db)
 
 app = FastAPI(title="Wazzzxpense", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -28,8 +31,13 @@ app = FastAPI(title="Wazzzxpense", docs_url=None, redoc_url=None, openapi_url=No
 @app.middleware("http")
 async def require_login(request: Request, call_next):
     path = request.url.path
-    if not path.startswith(PUBLIC) and not request.session.get("auth"):
-        return RedirectResponse("/login", status_code=303)
+    if not path.startswith(PUBLIC):
+        uid = request.session.get("uid")
+        with SessionLocal() as db:
+            ok = uid is not None and db.get(User, uid) is not None  # compte supprimé = session révoquée
+        if not ok:
+            request.session.clear()
+            return RedirectResponse("/login", status_code=303)
     response = await call_next(request)
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("Referrer-Policy", "same-origin")
@@ -45,27 +53,36 @@ app.mount("/static", StaticFiles(directory=STATIC), name="static")
 _failures: dict[str, list[float]] = defaultdict(list)
 
 
+def _login_page(request: Request, error=None, status=200, username=""):
+    with SessionLocal() as db:
+        configured = has_users(db)
+    return templates.TemplateResponse(request, "login.html", {"error": error, "configured": configured,
+                                                              "username": username}, status_code=status)
+
+
 @app.get("/login")
 def login_form(request: Request):
-    return templates.TemplateResponse(request, "login.html", {"error": None, "configured": bool(APP_PASSWORD)})
+    return _login_page(request)
 
 
 @app.post("/login")
-def login(request: Request, password: str = Form(...)):
+def login(request: Request, username: str = Form(""), password: str = Form(...)):
     ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "?").split(",")[0]
     now = time.time()
     _failures[ip] = [t for t in _failures[ip] if now - t < 900]
     if len(_failures[ip]) >= 8:
-        return templates.TemplateResponse(request, "login.html", {
-            "error": "Trop de tentatives, réessayez dans 15 minutes.", "configured": True}, status_code=429)
-    if APP_PASSWORD and hmac.compare_digest(password.encode(), APP_PASSWORD.encode()):
-        request.session.clear()
-        request.session["auth"] = True
-        return RedirectResponse("/", status_code=303)
+        return _login_page(request, "Trop de tentatives, réessayez dans 15 minutes.", 429, username)
+    with SessionLocal() as db:
+        user = authenticate(db, username, password)
+        if user:
+            user.last_login = datetime.now()
+            db.commit()
+            request.session.clear()
+            request.session.update(uid=user.id, user=user.username)
+            return RedirectResponse("/", status_code=303)
     _failures[ip].append(now)
     time.sleep(1)
-    return templates.TemplateResponse(request, "login.html", {
-        "error": "Mot de passe incorrect.", "configured": bool(APP_PASSWORD)}, status_code=401)
+    return _login_page(request, "Identifiant ou mot de passe incorrect.", 401, username)
 
 
 @app.post("/logout")

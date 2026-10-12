@@ -16,6 +16,6 @@
   <a class="tile" href="/settings"><div class="i">⚙️</div><b>Paramètres</b><span>Comptes, catégories, règles</span></a>
 </div>
 <form method="post" action="/logout" style="text-align:center;margin-top:24px">
-  <button class="btn small ghost" name="x" value="1">Se déconnecter</button>
+  <button class="btn small ghost" name="x" value="1">Se déconnecter ({{ request.session.get('user', '') }})</button>
 </form>
 {% endblock %}
