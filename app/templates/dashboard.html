@@ -13,17 +13,43 @@
 </div>
 
 {% if nav_inbox or nav_pending %}
-<div class="grid2">
+<div class="grid2" style="margin-bottom:12px">
   <a class="stat" href="/inbox"><div class="l">À catégoriser</div><div class="v">📥 {{ nav_inbox }}</div></a>
   <a class="stat" href="/pending"><div class="l">Achats en attente</div><div class="v">⏳ {{ nav_pending }}</div></a>
 </div>
 {% endif %}
 
-<h2>{{ month|month_label }}</h2>
-<div class="grid3">
-  <div class="stat"><div class="l">Entrées</div><div class="v pos">{{ stats.income|money }}</div></div>
-  <div class="stat"><div class="l">Sorties</div><div class="v">{{ stats.expenses|money }}</div></div>
-  <div class="stat"><div class="l">Solde</div><div class="v {{ 'pos' if stats.net >= 0 }}" {% if stats.net < 0 %}style="color:var(--bad)"{% endif %}>{{ stats.net|smoney }}</div></div>
+<!-- Dépenses du mois par catégorie -->
+<div class="card">
+  {{ m.monthnav(month, '/?') }}
+  <div class="grid3" style="margin-bottom:14px">
+    <div><div class="sub">Dépensé</div><div class="amt" style="font-size:18px">{{ stats.expenses|money }}</div></div>
+    <div><div class="sub">Rentré</div><div class="amt pos" style="font-size:18px">{{ stats.income|money }}</div></div>
+    <div><div class="sub">Solde</div><div class="amt" style="font-size:18px;{{ 'color:var(--bad)' if stats.net < 0 }}">{{ stats.net|smoney }}</div></div>
+  </div>
+  {% for c in spent %}
+  <a href="/transactions?month={{ month }}&category={{ c.id or 0 }}" style="display:block;color:inherit;margin-bottom:11px">
+    <div style="display:flex;justify-content:space-between;gap:8px">
+      <span class="ell">{{ c.icon }} {{ c.name }}</span>
+      <span class="amt">{{ c.total|money }}{% if c.budget %}<span class="sub"> / {{ c.budget|money }}</span>{% endif %}</span>
+    </div>
+    {% if c.budget %}{{ m.budget_bar(c.total, c.budget) }}
+    {% else %}<div class="bar"><span style="width:{{ (100 * c.total / max_spent)|round }}%;opacity:.55"></span></div>{% endif %}
+  </a>
+  {% else %}
+  <p class="sub" style="margin:0">Aucune dépense ce mois-ci. <a href="/import">Importer un relevé</a></p>
+  {% endfor %}
+  {% if stats.jems_total %}<a class="sub" href="/jems?month={{ month }}">💼 + {{ stats.jems_total|money }} de frais Jems (hors budget, {{ stats.jems_todo }} à déclarer)</a>{% endif %}
+  <div class="actions"><a class="btn small ghost" href="/report?month={{ month }}">📊 Bilan détaillé</a></div>
+</div>
+
+<!-- Budget fixe -->
+<div class="grid2">
+  <a class="stat" href="/fixed"><div class="l">Charges fixes / mois</div><div class="v">{{ fixed.total|money }}</div>
+    <div class="sub">reste {{ fixed.left|money }} sur les revenus fixes</div></a>
+  <a class="stat" href="/installments"><div class="l">Paiements en plusieurs fois</div>
+    <div class="v">{{ fixed.plans|length }} en cours</div>
+    <div class="sub">reste {{ fixed.plans|sum(attribute='left_cents')|money }}</div></a>
 </div>
 
 {% if alerts %}
@@ -31,19 +57,6 @@
 {% for a in alerts %}
 <a class="alert {{ a.level }}" href="{{ a.url or '/report' }}"><b>{{ a.title }}</b>{{ a.detail }}</a>
 {% endfor %}
-{% endif %}
-
-{% if budgets %}
-<h2>Budgets du mois <a href="/budget" style="float:right;text-transform:none">Tout voir</a></h2>
-<div class="card">
-  {% for c in budgets %}
-  <div style="margin-bottom:12px">
-    <div style="display:flex;justify-content:space-between"><span>{{ c.icon }} {{ c.name }}</span>
-      <span class="sub">{{ c.total|money }} / {{ c.budget|money }}</span></div>
-    {{ m.budget_bar(c.total, c.budget) }}
-  </div>
-  {% endfor %}
-</div>
 {% endif %}
 
 <h2>Prochaines échéances <a href="/forecast" style="float:right;text-transform:none">Échéancier</a></h2>
@@ -66,9 +79,9 @@
   <ul class="list">
     {% for a, b in balances %}
     <li><a class="row" href="/transactions?account={{ a.id }}">
-      <div class="ico">🏦</div>
+      <div class="ico">{{ '💳' if a.kind == 'carte' else ('👫' if a.kind == 'joint' else '🏦') }}</div>
       <div class="grow"><div>{{ a.name }}</div><div class="sub">{{ a.bank }}</div></div>
-      <div class="amt">{{ b|money }}</div>
+      <div class="amt" {% if b < 0 %}style="color:var(--bad)"{% endif %}>{{ b|money }}</div>
     </a></li>
     {% endfor %}
   </ul>

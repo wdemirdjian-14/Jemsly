@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block back %}<a class="back" href="/">‹</a>{% endblock %}
+{% block heading %}Charges fixes{% endblock %}
+{% block content %}
+<div class="card hero">
+  <div class="muted">Chaque mois, quoi qu'il arrive</div>
+  <div class="big">{{ fixed.total|money }}</div>
+  <div style="margin-top:8px;font-size:14px">Revenus fixes {{ fixed.total_in|money }} · <b>reste {{ fixed.left|money }}</b> pour vivre et épargner</div>
+</div>
+<p class="sub">Crédits, assurances, abonnements, école, impôts mensualisés, paiements en plusieurs fois… en équivalent mensuel
+  (une dépense annuelle compte pour 1/12). Touchez une ligne pour la modifier.</p>
+
+{% for g in fixed.groups %}
+<details class="card" {{ 'open' if loop.index <= 3 }}>
+  <summary style="display:flex;justify-content:space-between;gap:8px">
+    <b>{{ g.icon }} {{ g.name }}</b><span class="amt">{{ g.total|money }}</span>
+  </summary>
+  <div class="bar" style="margin:8px 0 4px"><span style="width:{{ (100 * g.total / (fixed.total or 1))|round }}%"></span></div>
+  <ul class="list">
+    {% for i in g['items'] %}
+    <li style="padding:10px 0"><a class="row" href="{{ i.url }}">
+      <div class="grow"><div class="ell">{{ i.label }}</div>{% if i.sub %}<div class="sub">{{ i.sub }}</div>{% endif %}</div>
+      <div class="amt">{{ i.monthly|money }}</div>
+    </a></li>
+    {% endfor %}
+  </ul>
+</details>
+{% else %}
+<div class="empty"><div class="i">📌</div>Aucune charge fixe. Ajoutez vos crédits, assurances et abonnements.</div>
+{% endfor %}
+
+{% if fixed.income %}
+<h2>Revenus fixes</h2>
+<div class="card flush"><ul class="list">
+  {% for i in fixed.income %}
+  <li><a class="row" href="{{ i.url }}"><div class="grow">{{ i.label }}</div><div class="amt pos">{{ i.monthly|money }}</div></a></li>
+  {% endfor %}
+</ul></div>
+{% endif %}
+
+<div class="actions">
+  <a class="btn small ghost" href="/recurrences/new">+ Charge récurrente</a>
+  <a class="btn small ghost" href="/installments/new">+ Paiement en plusieurs fois</a>
+  <a class="btn small ghost" href="/loans/new">+ Crédit</a>
+  <a class="btn small ghost" href="/insurances/new">+ Assurance</a>
+</div>
+{% endblock %}

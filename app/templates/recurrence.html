@@ -21,6 +21,7 @@
   <label>Catégorie</label>{{ m.category_select(categories, rec.category_id if rec) }}
   <label>Pour qui</label>{{ m.person_select(persons, rec.person_id if rec) }}
   <label>Périmètre</label>{{ m.scope_seg(rec.scope if rec else 'famille') }}
+  <label class="check"><input type="checkbox" name="is_fixed" value="1" {{ 'checked' if not rec or rec.is_fixed }}> 📌 Montant fixe (compte dans les « charges fixes »)</label>
   <label class="check"><input type="checkbox" name="is_provision" value="1" {{ 'checked' if rec and rec.is_provision }}> 🐷 Provision (je mets de côté chaque mois pour cette dépense)</label>
   {% if rec %}<label class="check"><input type="checkbox" name="active" value="1" {{ 'checked' if rec.active }}> Active</label>{% endif %}
   <button class="btn block" type="submit">Enregistrer</button>

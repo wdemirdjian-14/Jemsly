@@ -10,10 +10,11 @@ from ..models import (
     Attachment, InstallmentItem, InstallmentPlan, Insurance, Loan, Recurrence, Transaction,
 )
 from ..services import (
-    account_balance, apply_auto, loan_status, pending_total, provisions, upcoming,
+    account_balance, apply_auto, build_installments, link_installments, loan_status, pending_total, provisions,
+    upcoming,
 )
 from ..templating import redirect, render
-from ..utils import add_months, label_contains
+from ..utils import label_contains
 from .common import fcents, fdate, fint, lookups, save_uploads
 
 router = APIRouter()
@@ -183,7 +184,8 @@ def installments(request: Request, db: Session = Depends(get_db)):
 @router.get("/installments/new")
 def installment_detail(request: Request, pid: int | None = None, db: Session = Depends(get_db)):
     plan = db.get(InstallmentPlan, pid) or _404() if pid else None
-    return render(request, db, "installment.html", plan=plan, **lookups(db))
+    docs = db.scalars(select(Attachment).where(Attachment.installment_id == pid)).all() if plan else []
+    return render(request, db, "installment.html", plan=plan, docs=docs, **lookups(db))
 
 
 @router.post("/installments")
@@ -212,21 +214,9 @@ async def installment_save(request: Request, pid: int | None = None, db: Session
     plan.notes = f.get("notes", "").strip()
     db.flush()
     if regenerate:
-        for it in list(plan.items):
-            if it.transaction_id is None:
-                plan.items.remove(it)
-        paid = len(plan.items)
-        base, rest = divmod(total, count)
-        for k in range(paid, count):
-            # le 1er versement absorbe les centimes d'arrondi, comme le font Alma/Oney/Klarna
-            plan.items.append(InstallmentItem(due_date=add_months(first, k), amount_cents=base + (rest if k == 0 else 0)))
-        db.flush()
-    n = 0
-    for tx in db.scalars(select(Transaction).where(Transaction.amount_cents < 0,
-                                                   Transaction.date >= first - timedelta(days=10))):
-        if not any(i.transaction_id == tx.id for i in plan.items) and not tx.categorized:
-            if apply_auto(db, tx) == "paiement en plusieurs fois":
-                n += 1
+        build_installments(db, plan, total, count, first)
+    n = link_installments(db, plan)
+    await save_uploads(db, f, installment_id=plan.id)
     db.commit()
     return redirect(request, f"/installments/{plan.id}", f"Échéancier enregistré ({n} échéance(s) déjà payée(s)).")
 
@@ -293,6 +283,7 @@ async def recurrence_save(request: Request, rid: int | None = None, db: Session 
     rec.scope = f.get("scope") or "famille"
     rec.match_pattern = f.get("match_pattern", "").strip()
     rec.is_provision = bool(f.get("is_provision"))
+    rec.is_fixed = bool(f.get("is_fixed"))
     rec.active = bool(f.get("active")) or not rid
     db.flush()
     n = _relink(db, rec.match_pattern, "recurrence_id", rec.id)

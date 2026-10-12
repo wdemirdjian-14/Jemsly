@@ -119,6 +119,7 @@ class Recurrence(Base):
     scope: Mapped[str] = mapped_column(String(10), default="famille")
     match_pattern: Mapped[str] = mapped_column(String(120), default="")
     is_provision: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_fixed: Mapped[bool] = mapped_column(Boolean, default=True)  # charge/revenu fixe (vs montant variable : carte…)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     category: Mapped[Category | None] = relationship()
 
@@ -252,6 +253,7 @@ class Attachment(Base):
     pending_id: Mapped[int | None] = mapped_column(ForeignKey("pending.id", ondelete="SET NULL"), nullable=True)
     loan_id: Mapped[int | None] = mapped_column(ForeignKey("loans.id", ondelete="SET NULL"), nullable=True)
     insurance_id: Mapped[int | None] = mapped_column(ForeignKey("insurances.id", ondelete="SET NULL"), nullable=True)
+    installment_id: Mapped[int | None] = mapped_column(ForeignKey("installment_plans.id", ondelete="SET NULL"), nullable=True)
     transaction: Mapped[Transaction | None] = relationship(back_populates="attachments")
     pending: Mapped[Pending | None] = relationship(back_populates="attachments")
 

@@ -129,6 +129,7 @@ def apply_profile(db: Session, data: dict) -> dict:
         r.person_id = person(item.get("person"))
         r.scope = item.get("scope", "famille")
         r.is_provision = bool(item.get("is_provision"))
+        r.is_fixed = item.get("is_fixed", True)
         db.add(r)
     stats["récurrences"] = len(data.get("recurrences", []))
 

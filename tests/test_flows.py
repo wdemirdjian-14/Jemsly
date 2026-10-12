@@ -262,3 +262,31 @@ def test_users_login_and_access(client, db):
                                          "password2": "nouveau-mdp-123"})
     assert anon.post("/login", data={"username": "warren", "password": "nouveau-mdp-123"},
                      follow_redirects=False).status_code == 303
+
+
+def test_fixed_charges_and_purchase_in_installments(client, db):
+    today = date.today()
+    client.post("/recurrences", data={"label": "Salaire", "amount": "3000", "direction": "in", "frequency": "mensuel",
+                                      "next_date": today.isoformat(), "is_fixed": "1"})
+    client.post("/recurrences", data={"label": "Netflix", "amount": "13,49", "direction": "out", "frequency": "mensuel",
+                                      "next_date": today.isoformat(), "is_fixed": "1"})
+    client.post("/recurrences", data={"label": "Taxe foncière", "amount": "1200", "direction": "out",
+                                      "frequency": "annuel", "next_date": today.isoformat(), "is_fixed": "1"})
+    client.post("/recurrences", data={"label": "Carte (variable)", "amount": "2000", "direction": "out",
+                                      "frequency": "mensuel", "next_date": today.isoformat()})  # non fixe
+    client.post("/insurances", data={"name": "Auto", "insurer": "AXA", "premium": "50", "frequency": "mensuel"})
+    # achat en 3 fois saisi depuis « + Achat » ; la 1re échéance est déjà sur le compte, rangée par une règle
+    _import(client, _csv([f"{today:%d/%m/%Y};PRLV AMAZON PAYMENTS;-100,01"]))
+    r = client.post("/pending", data={"amount": "300,01", "direction": "out", "installments": "3", "label": "Télé",
+                                      "keyword": "AMAZON", "date": today.isoformat()},
+                    files={"files": ("facture.pdf", b"%PDF-1", "application/pdf")}, follow_redirects=False)
+    assert r.headers["location"].startswith("/installments/")
+    plan = db.scalars(select(InstallmentPlan)).one()
+    assert [i.amount_cents for i in plan.items] == [10001, 10000, 10000] and plan.items[0].transaction_id
+    assert db.scalars(select(Pending)).all() == []
+    page = client.get("/fixed").text
+    # 13,49 + 100 (1200/12) + 50 + 100 (prochaine échéance) = 263,49 ; la carte variable n'y est pas
+    assert "263,49" in page.replace(" ", "") and "Carte (variable)" not in page
+    assert "2736,51" in page.replace(" ", "")  # reste = 3000 - 263,49
+    home = client.get("/").text
+    assert "Charges fixes" in home and "1 en cours" in home

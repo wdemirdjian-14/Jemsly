@@ -18,7 +18,8 @@
   </ul>
 </div>
 {% endif %}
-<form method="post" action="/installments{{ '/' ~ plan.id if plan }}" class="card">
+{% if plan %}{{ m.attachments(docs, '/installments/' ~ plan.id) }}{% endif %}
+<form method="post" action="/installments{{ '/' ~ plan.id if plan }}" enctype="multipart/form-data" class="card">
   <label>Achat</label><input name="label" value="{{ plan.label if plan }}" placeholder="ex : Canapé" required>
   <div class="grid2">
     <div><label>Organisme / marchand</label><input name="merchant" value="{{ plan.merchant if plan }}" placeholder="ex : Alma, Oney, Klarna"></div>
@@ -32,6 +33,7 @@
   <label>Pour qui</label>{{ m.person_select(persons, plan.person_id if plan) }}
   <label>Périmètre</label>{{ m.scope_seg(plan.scope if plan else 'famille') }}
   <label>Notes</label><textarea name="notes">{{ plan.notes if plan }}</textarea>
+  {{ m.file_input('Contrat / facture') }}
   <button class="btn block" type="submit">Enregistrer</button>
   {% if plan %}<button class="btn block danger" name="action" value="delete" data-confirm="Supprimer ce paiement ?">Supprimer</button>{% endif %}
 </form>

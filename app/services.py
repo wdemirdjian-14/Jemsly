@@ -635,3 +635,105 @@ def recategorize_all(db: Session) -> int:
         apply_auto(db, tx)
         n += tx.categorized
     return n
+
+
+# ---------------------------------------------------------------- charges fixes
+
+PER_MONTH = {"hebdo": 52 / 12, "mensuel": 1, "trimestriel": 1 / 3, "semestriel": 1 / 6, "annuel": 1 / 12}
+
+
+def fixed_charges(db: Session) -> dict:
+    """Vue « budget fixe » : ce qui sort (et rentre) chaque mois quoi qu'il arrive, en équivalent mensuel."""
+    groups: dict[str, dict] = {}
+
+    def add(group, icon, label, monthly, url, sub=""):
+        g = groups.setdefault(group, {"name": group, "icon": icon, "items": [], "total": 0})
+        g["items"].append({"label": label, "monthly": round(monthly), "url": url, "sub": sub})
+        g["total"] += round(monthly)
+
+    for loan in db.scalars(select(Loan).where(Loan.active.is_(True))):
+        st = loan_status(loan)
+        if st["remaining_count"] == 0 or not loan.monthly_cents:
+            continue
+        sub = f"fin ≈ {st['end_date']:%m/%Y}" if st.get("end_date") else "durée à compléter"
+        add("Crédits", "🏦", loan.name, loan.monthly_cents, f"/loans/{loan.id}", sub)
+    for ins in db.scalars(select(Insurance).where(Insurance.active.is_(True))):
+        months = FREQ_MONTHS.get(ins.frequency, 1)
+        add("Assurances", "🛡️", ins.name, ins.premium_cents / months, f"/insurances/{ins.id}",
+            "" if months == 1 else f"{ins.premium_cents / 100:.2f} € / {months} mois")
+    income = []
+    for rec in db.scalars(select(Recurrence).where(Recurrence.active.is_(True), Recurrence.is_fixed.is_(True))):
+        if rec.end_date and rec.end_date < date.today():
+            continue
+        if rec.category and rec.category.kind == "virement":
+            continue
+        monthly = rec.amount_cents * PER_MONTH.get(rec.frequency, 1)
+        if rec.amount_cents > 0:
+            income.append({"label": rec.label, "monthly": round(monthly), "url": f"/recurrences/{rec.id}"})
+            continue
+        name = rec.category.name if rec.category else "Autres charges"
+        icon = rec.category.icon if rec.category else "🔁"
+        sub = "" if rec.frequency == "mensuel" else f"{-rec.amount_cents / 100:.2f} € {rec.frequency}"
+        add(name, icon, rec.label, -monthly, f"/recurrences/{rec.id}", sub)
+
+    plans = []
+    for plan in db.scalars(select(InstallmentPlan)):
+        left = [i for i in plan.items if i.transaction_id is None]
+        if not left:
+            continue
+        plans.append({"plan": plan, "left_count": len(left), "left_cents": sum(i.amount_cents for i in left),
+                      "next": left[0], "end": left[-1].due_date})
+        add("Paiements en plusieurs fois", "🧩", plan.label, left[0].amount_cents, f"/installments/{plan.id}",
+            f"{len(left)} échéance(s) restante(s), fin {left[-1].due_date:%m/%Y}")
+
+    ordered = sorted(groups.values(), key=lambda g: -g["total"])
+    for g in ordered:
+        g["items"].sort(key=lambda i: -i["monthly"])
+    total_out = sum(g["total"] for g in ordered)
+    total_in = sum(i["monthly"] for i in income)
+    return {"groups": ordered, "total": total_out, "income": income, "total_in": total_in,
+            "left": total_in - total_out, "plans": plans}
+
+
+def build_installments(db: Session, plan: InstallmentPlan, total: int, count: int, first: date):
+    """(Re)génère les échéances non payées d'un paiement fractionné."""
+    for it in list(plan.items):
+        if it.transaction_id is None:
+            plan.items.remove(it)
+    paid = len(plan.items)
+    base, rest = divmod(total, count)
+    for k in range(paid, count):
+        # le 1er versement absorbe les centimes d'arrondi, comme Alma / Oney / Klarna
+        plan.items.append(InstallmentItem(due_date=add_months(first, k), amount_cents=base + (rest if k == 0 else 0)))
+    db.flush()
+
+
+def link_installments(db: Session, plan: InstallmentPlan) -> int:
+    """Rattache les échéances déjà prélevées (même montant, date proche), y compris si une règle les avait rangées
+    ailleurs. Les opérations rangées à la main ne sont pas modifiées."""
+    taken = set(db.scalars(select(InstallmentItem.transaction_id).where(InstallmentItem.transaction_id.is_not(None))))
+    n = 0
+    for item in plan.items:
+        if item.transaction_id:
+            continue
+        cands = db.scalars(select(Transaction).where(
+            Transaction.amount_cents.between(-item.amount_cents - 2, -item.amount_cents + 2),
+            Transaction.date.between(item.due_date - timedelta(days=10), item.due_date + timedelta(days=7)),
+            Transaction.auto_source.not_in(["manuel", "règlement carte"]),
+        )).all()
+        cands = [t for t in cands if t.id not in taken and
+                 (not plan.match_pattern or label_contains(t.label, plan.match_pattern))]
+        if not cands:
+            continue
+        tx = min(cands, key=lambda t: abs((t.date - item.due_date).days))
+        item.transaction_id = tx.id
+        taken.add(tx.id)
+        tx.category_id = plan.category_id or tx.category_id
+        tx.person_id = plan.person_id or tx.person_id
+        _set_scope(tx, plan.scope)
+        add_tags(db, tx, ["plusieurs-fois", plan.merchant])
+        tx.note = f"Échéance {plan.items.index(item) + 1}/{plan.count} – {plan.label}"
+        tx.categorized = bool(tx.category_id)
+        tx.auto_source = "paiement en plusieurs fois"
+        n += 1
+    return n

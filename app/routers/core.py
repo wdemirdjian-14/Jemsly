@@ -9,10 +9,10 @@ from sqlalchemy.orm import Session
 
 from ..config import UPLOAD_DIR
 from ..db import get_db
-from ..models import Account, Attachment, Pending, Rule, Tag, Transaction, transaction_tags
+from ..models import Account, Attachment, InstallmentPlan, Pending, Rule, Tag, Transaction, transaction_tags
 from ..services import (
-    account_balance, add_tags, apply_auto, inspect_month, link_pending, match_pending_to_existing, month_stats,
-    pending_total, similar_uncategorized, upcoming,
+    account_balance, add_tags, apply_auto, build_installments, fixed_charges, link_installments, inspect_month, link_pending, match_pending_to_existing,
+    month_stats, pending_total, similar_uncategorized, upcoming,
 )
 from ..search import SORTS, apply_search
 from ..templating import redirect, render
@@ -26,9 +26,14 @@ router = APIRouter()
 
 @router.get("/")
 def dashboard(request: Request, db: Session = Depends(get_db)):
-    month = current_month()
-    start, _ = month_bounds(month)
-    if not db.scalar(select(Transaction.id).where(Transaction.date >= start).limit(1)):
+    month = request.query_params.get("month") or current_month()
+    try:
+        start, _ = month_bounds(month)
+    except ValueError:
+        month = current_month()
+        start, _ = month_bounds(month)
+    if "month" not in request.query_params and \
+            not db.scalar(select(Transaction.id).where(Transaction.date >= start).limit(1)):
         last = db.scalar(select(func.max(Transaction.date)))  # relevés pas encore importés : dernier mois connu
         if last:
             month = last.strftime("%Y-%m")
@@ -41,12 +46,18 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
     to_month_end = upcoming(db, today, month_end)
     next30 = upcoming(db, today, today + timedelta(days=30))
     stats = month_stats(db, month)
-    alerts = [a for a in inspect_month(db, month, stats) if a["level"] != "info"][:5]
-    budgets = [c for c in stats["categories"] if c["budget"]]
-    budgets.sort(key=lambda c: -(c["total"] / c["budget"]))
+    alerts = [a for a in inspect_month(db, month, stats) if a["level"] != "info"][:4]
+    spent = [c for c in stats["categories"] if c["total"]]
+    fixed = fixed_charges(db)
     return render(request, db, "dashboard.html", month=month, balances=balances, total=total, pending=pend,
                   available=total + pend, end_of_month=total + pend + sum(e.amount_cents for e in to_month_end),
-                  upcoming=next30[:8], stats=stats, alerts=alerts, budgets=budgets[:6])
+                  upcoming=next30[:6], stats=stats, alerts=alerts, spent=spent,
+                  max_spent=max([c["total"] for c in spent] or [1]), fixed=fixed)
+
+
+@router.get("/fixed")
+def fixed_view(request: Request, db: Session = Depends(get_db)):
+    return render(request, db, "fixed.html", fixed=fixed_charges(db))
 
 
 # ---------------------------------------------------------------- opérations
@@ -227,6 +238,23 @@ async def pending_save(request: Request, pid: int | None = None, db: Session = D
     if cents is None:
         return redirect(request, "/pending/new", "Montant invalide.")
     cents = abs(cents) if f.get("direction") == "in" else -abs(cents)
+    count = fint(f.get("installments")) or 1
+    if not pid and count > 1 and cents < 0:
+        # achat payé en plusieurs fois : on crée directement l'échéancier
+        first = fdate(f.get("date"), date.today())
+        plan = InstallmentPlan(label=f.get("label", "").strip() or "Achat", total_cents=-cents, count=count,
+                               first_date=first, merchant=f.get("keyword", "").strip(),
+                               match_pattern=f.get("keyword", "").strip(), category_id=fint(f.get("category_id")),
+                               person_id=fint(f.get("person_id")), scope=f.get("scope") or "famille",
+                               notes=f.get("note", "").strip())
+        db.add(plan)
+        db.flush()
+        build_installments(db, plan, -cents, count, first)
+        n = link_installments(db, plan)
+        await save_uploads(db, f, installment_id=plan.id)
+        db.commit()
+        msg = f"Paiement en {count} fois enregistré : {count} échéances de ≈ {-cents / count / 100:.2f} €."
+        return redirect(request, f"/installments/{plan.id}", msg + (f" {n} déjà débitée(s)." if n else ""))
     p = db.get(Pending, pid) if pid else Pending(status="attente")
     if p is None:
         _404()

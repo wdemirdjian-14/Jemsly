@@ -15,6 +15,14 @@
   </div>
   <input class="amount-input" name="amount" inputmode="decimal" placeholder="0,00 €" required autofocus
          value="{{ (-p.amount_cents if p.amount_cents < 0 else p.amount_cents)|eur if p }}" style="margin-top:12px">
+  {% if not p %}
+  <label>Payé en</label>
+  <div class="seg">
+    {% for n, l in [(1, 'Comptant'), (3, '3 fois'), (4, '4 fois'), (10, '10 fois')] %}
+    <label><input type="radio" name="installments" value="{{ n }}" {{ 'checked' if n == 1 }}>{{ l }}</label>
+    {% endfor %}
+  </div>
+  {% endif %}
   <label>Quoi / où ?</label>
   <input name="label" value="{{ p.label if p }}" placeholder="ex : Chaussures Léo – Decathlon" required>
   <div class="grid2">
