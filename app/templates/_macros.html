@@ -8,7 +8,7 @@
         {{ t.date|d }} · {{ t.category.path if t.category else 'À classer' }}{% if t.person %} · {{ t.person.name }}{% endif %}
       </div>
       <div>
-        {% if t.method == 'cb' %}<span class="chip grey">💳 CB</span>{% elif t.method in ('prlv', 'vir', 'retrait', 'pret', 'cheque') %}<span class="chip grey">{{ METHODS[t.method] }}</span>{% endif %}
+        {% if t.method in ('cb', 'amex') %}<span class="chip grey">{{ METHODS[t.method] }}</span>{% elif t.method in ('prlv', 'vir', 'retrait', 'pret', 'cheque') %}<span class="chip grey">{{ METHODS[t.method] }}</span>{% endif %}
         {% if t.scope == 'jems' %}<span class="chip warn">Jems · {{ JEMS_STATUSES.get(t.jems_status, '') }}</span>{% endif %}
         {% for tag in t.tags %}<span class="chip">#{{ tag.name }}</span>{% endfor %}
         {% if t.attachments %}<span class="chip grey">📎 {{ t.attachments|length }}</span>{% endif %}

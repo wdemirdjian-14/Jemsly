@@ -15,7 +15,7 @@ from .. import ai, ca_pdf
 from ..db import get_db
 from ..importers import ImportErrorFR, parse_file
 from ..models import Account, ImportBatch, Pending, Transaction
-from ..services import TRANSFER_CATEGORY, account_balance, apply_auto, category_by_name
+from ..services import TRANSFER_CATEGORY, account_balance, apply_auto, category_by_name, resettle_card_payments
 from ..templating import redirect, render
 from ..utils import norm
 from .common import fint, lookups
@@ -112,6 +112,11 @@ async def _create_batch(db: Session, up, chosen: Account | None) -> ImportBatch:
         raise ImportErrorFR("Choisissez le compte concerné par ce relevé.")
     if not rows:
         raise ImportErrorFR("Aucune opération trouvée dans ce fichier.")
+    if acc.kind == "carte" and fmt in ("csv", "ofx"):
+        # relevé de carte (Amex…) : les achats y sont souvent positifs ; ici une dépense est toujours négative
+        if sum(1 for r in rows if r["amount_cents"] > 0) > len(rows) / 2:
+            for r in rows:
+                r["amount_cents"] = -r["amount_cents"]
     for r in rows:
         r.setdefault("acct", acc.id)
     rows = _keys(rows)
@@ -187,6 +192,8 @@ def _confirm(db: Session, batch: ImportBatch, selected: set[int]) -> int:
         main.initial_balance_cents = meta["opening"]
         main.initial_date = date.fromisoformat(meta["opening_date"]) + timedelta(days=1)
     batch.status, batch.imported, batch.duplicates = "done", created, dup
+    if main and main.kind == "carte" and main.settle_pattern:
+        resettle_card_payments(db, main)
     return created
 
 
@@ -200,7 +207,15 @@ def import_form(request: Request, db: Session = Depends(get_db)):
 async def import_upload(request: Request, db: Session = Depends(get_db)):
     f = await request.form()
     uploads = [u for u in f.getlist("files") + f.getlist("file") if getattr(u, "filename", None)]
-    chosen = db.get(Account, fint(f.get("account_id")) or 0)
+    if f.get("account_id") == "new_amex":
+        chosen = db.scalar(select(Account).where(Account.kind == "carte", Account.bank == "American Express"))
+        if chosen is None:
+            chosen = Account(name="Carte Amex", bank="American Express", kind="carte", initial_date=date(2000, 1, 1),
+                             settle_pattern="AMERICAN EXPRESS", default_scope="perso")
+            db.add(chosen)
+            db.flush()
+    else:
+        chosen = db.get(Account, fint(f.get("account_id")) or 0)
     if not uploads:
         return redirect(request, "/import", "Choisissez un ou plusieurs fichiers.")
     if len(uploads) == 1:

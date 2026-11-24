@@ -51,6 +51,10 @@ def apply_profile(db: Session, data: dict) -> dict:
             c.kind = item["kind"]
         if "budget" in item:
             c.budget_cents = _cents(item["budget"])
+        if "quick" in item:
+            c.is_quick = bool(item["quick"])
+        if "advance" in item:
+            c.is_advance = bool(item["advance"])
     db.flush()
     stats["catégories"] = len(data.get("categories", []))
 
@@ -72,6 +76,7 @@ def apply_profile(db: Session, data: dict) -> dict:
         a.kind = item.get("kind", a.kind or "courant")
         a.default_scope = item.get("default_scope", a.default_scope or "")
         a.default_person_id = person(item.get("default_person"))
+        a.settle_pattern = item.get("settle_pattern", a.settle_pattern or "")
         db.add(a)
     # le compte d'exemple créé à l'installation disparaît s'il est resté vide
     if data.get("accounts"):

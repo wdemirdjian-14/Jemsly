@@ -222,19 +222,19 @@ async def manual_create(request: Request, db: Session = Depends(get_db)):
 def inbox(request: Request, db: Session = Depends(get_db)):
     method = request.query_params.get("method", "")
     q = select(Transaction).where(Transaction.categorized.is_(False))
-    if method == "cb":
-        q = q.where(Transaction.method == "cb")
+    if method in ("cb", "amex"):
+        q = q.where(Transaction.method == method)
     elif method == "autre":
-        q = q.where(Transaction.method != "cb")
+        q = q.where(Transaction.method.not_in(["cb", "amex"]))
     rows = db.scalars(q.order_by(Transaction.date.desc())).all()
     # une carte par marchand : les opérations similaires sont classées en même temps
     groups: dict[str, list[Transaction]] = {}
     for t in rows:
         groups.setdefault(merchant_key(t.label) or f"#{t.id}", []).append(t)
-    counts = {"cb": db.scalar(select(func.count(Transaction.id)).where(Transaction.categorized.is_(False),
-                                                                         Transaction.method == "cb"))}
-    counts["all"] = db.scalar(select(func.count(Transaction.id)).where(Transaction.categorized.is_(False)))
-    counts["autre"] = counts["all"] - counts["cb"]
+    todo = select(func.count(Transaction.id)).where(Transaction.categorized.is_(False))
+    counts = {m: db.scalar(todo.where(Transaction.method == m)) for m in ("cb", "amex")}
+    counts["all"] = db.scalar(todo)
+    counts["autre"] = counts["all"] - counts["cb"] - counts["amex"]
     return render(request, db, "inbox.html", rows=rows, groups=list(groups.values()), method=method, counts=counts,
                   contacts=db.scalars(select(Contact).order_by(Contact.name)).all(),
                   **lookups(db))

@@ -8,7 +8,7 @@
 </div>
 {% if counts.all %}
 <div class="filters">
-  {% for k, l in [('', 'Tout (' ~ counts.all ~ ')'), ('cb', '💳 CB (' ~ counts.cb ~ ')'), ('autre', 'Prélèvements, virements… (' ~ counts.autre ~ ')')] %}
+  {% for k, l in [('', 'Tout (' ~ counts.all ~ ')'), ('cb', '💳 CB (' ~ counts.cb ~ ')'), ('amex', '💳 Amex (' ~ counts.amex ~ ')'), ('autre', 'Prélèvements, virements… (' ~ counts.autre ~ ')')] if k != 'amex' or counts.amex %}
   <a class="chip {{ '' if method == k else 'grey' }}" style="font-size:13px;padding:6px 12px" href="/inbox?method={{ k }}">{{ l }}</a>
   {% endfor %}
 </div>

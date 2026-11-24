@@ -524,3 +524,37 @@ def test_who_owes_me_what(client, db):
     # enlever le contact d'une opération supprime la ligne
     client.post(f"/transactions/{wero.id}", data={"contact": "", "scope": "perso"})
     assert db.scalar(select(Owed).where(Owed.transaction_id == wero.id)) is None
+
+
+AMEX_CSV = """Date,Description,Montant,Informations complémentaires,Apparaît sur votre relevé en tant que,Adresse,Référence
+{d1},UBER *TRIP,"23,40",,UBER *TRIP HELP.UBER.COM,AMSTERDAM,'AT1
+{d2},LE BON MARCHE PARIS,"189,00",,LE BON MARCHE,PARIS,'AT2
+{d3},"PRELEVEMENT AUTOMATIQUE ENREGISTRE, MERCI","-632,77",,,,'AT3
+"""
+
+
+def test_amex_detailed_import(client, db):
+    from app.models import Account
+    from app.services import month_stats
+    client.post("/settings/rules", data={"pattern": "AMERICAN EXPRESS", "category_id": "Carte Amex"})
+    d = date.today()
+    _import(client, _csv([f"{d:%d/%m/%Y};Prlv American Express Carte-france;-632,77"]))
+    prlv = db.scalars(select(Transaction)).one()
+    assert prlv.category.name == "Carte Amex"  # avant : une seule ligne non détaillée
+    csv = AMEX_CSV.format(d1=f"{d:%d/%m/%Y}", d2=f"{d:%d/%m/%Y}", d3=f"{d:%d/%m/%Y}").encode()
+    r = client.post("/import", data={"account_id": "new_amex"}, files={"file": ("activity.csv", csv)},
+                    follow_redirects=False)
+    bid = r.headers["location"].rsplit("/", 1)[1]
+    import re
+    rows = re.findall(r'name="row" value="(\d+)" checked', client.get(f"/import/{bid}").text)
+    client.post(f"/import/{bid}/confirm", data={"row": rows})
+    db.expire_all()
+    amex = db.scalar(select(Account).where(Account.bank == "American Express"))
+    txs = {t.label: t for t in db.scalars(select(Transaction).where(Transaction.account_id == amex.id))}
+    assert txs["UBER *TRIP"].amount_cents == -2340 and txs["UBER *TRIP"].method == "amex"
+    assert txs["PRELEVEMENT AUTOMATIQUE ENREGISTRE, MERCI"].category.kind == "virement"
+    assert db.get(Transaction, prlv.id).category.kind == "virement"  # le prélèvement Amex ne compte plus
+    stats = month_stats(db, f"{d:%Y-%m}")
+    assert stats["expenses"] == 2340 + 18900  # seuls les achats détaillés comptent
+    page = client.get("/inbox?method=amex").text
+    assert "LE BON MARCHE PARIS" in page and "💳 Amex" in page

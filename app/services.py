@@ -239,10 +239,14 @@ _METHOD_RULES = [
 ]
 
 
-def payment_method(label: str, account_kind: str = "") -> str:
-    """Type d'opération : CB, prélèvement, virement, retrait, échéance de prêt, chèque, frais…"""
+def is_amex(acc) -> bool:
+    return bool(acc) and acc.kind == "carte" and bool(re.search(r"AMEX|AMERICAN EXPRESS", norm(f"{acc.name} {acc.bank}")))
+
+
+def payment_method(label: str, account_kind: str = "", amex: bool = False) -> str:
+    """Type d'opération : CB, Amex, prélèvement, virement, retrait, échéance de prêt, chèque, frais…"""
     if account_kind == "carte":
-        return "cb"
+        return "amex" if amex else "cb"
     lab = norm(label)
     for method, rx in _METHOD_RULES:
         if rx.search(lab):
@@ -252,9 +256,10 @@ def payment_method(label: str, account_kind: str = "") -> str:
 
 def backfill_methods(db: Session) -> int:
     n = 0
-    kinds = {a.id: a.kind for a in db.scalars(select(Account))}
+    accs = {a.id: a for a in db.scalars(select(Account))}
     for tx in db.scalars(select(Transaction).where(Transaction.method.in_(["", None]))):
-        tx.method = payment_method(tx.label, kinds.get(tx.account_id, ""))
+        acc = accs.get(tx.account_id)
+        tx.method = payment_method(tx.label, acc.kind if acc else "", is_amex(acc))
         n += 1
     db.commit()
     return n
@@ -271,8 +276,10 @@ def apply_auto(db: Session, tx: Transaction) -> str:
 def _apply_auto(db: Session, tx: Transaction) -> str:
     acc = db.get(Account, tx.account_id)
     if not tx.method:
-        tx.method = payment_method(tx.label, acc.kind if acc else "")
+        tx.method = payment_method(tx.label, acc.kind if acc else "", is_amex(acc))
     match_invoice_for_transaction(db, tx)
+    if card_settlement(db, tx, acc):
+        return "règlement carte"
     if acc:
         if acc.default_scope and tx.scope in ("", "famille"):
             _set_scope(tx, acc.default_scope)
@@ -1044,6 +1051,41 @@ def advances_summary(db: Session) -> dict:
             "by_category": sorted(by_cat.items(), key=lambda kv: -kv[1]),
             "count_to_declare": sum(1 for t in rows if t.jems_status == "a_declarer")}
 
+
+
+# ---------------------------------------------------------------- cartes (Amex…)
+
+CARD_PAYMENT_RX = re.compile(r"\b(PRELEVEMENT|PAIEMENT|REGLEMENT|MERCI|PAYMENT|VERSEMENT)\b")
+
+
+def card_settlement(db: Session, tx: Transaction, acc: Account | None) -> bool:
+    """Carte détaillée (Amex…) : le prélèvement mensuel sur le compte courant et le paiement reçu sur la carte
+    sont des virements internes (les achats sont déjà comptés un par un)."""
+    transfer = None
+    if acc and acc.kind == "carte" and tx.amount_cents > 0 and CARD_PAYMENT_RX.search(norm(tx.label)):
+        transfer = True
+    elif acc and acc.kind != "carte":
+        for card in db.scalars(select(Account).where(Account.kind == "carte", Account.settle_pattern != "")):
+            if label_contains(tx.label, card.settle_pattern):
+                transfer = True
+                break
+    if transfer:
+        tx.category_id = category_by_name(db, TRANSFER_CATEGORY, kind="virement", icon="🔁").id
+        tx.categorized, tx.auto_source = True, "règlement carte"
+    return bool(transfer)
+
+
+def resettle_card_payments(db: Session, card: Account) -> int:
+    """Après l'ajout d'une carte détaillée : ses prélèvements déjà importés deviennent des virements internes."""
+    if not card.settle_pattern:
+        return 0
+    n = 0
+    for tx in db.scalars(select(Transaction).where(Transaction.account_id != card.id,
+                                                   Transaction.auto_source != "manuel")):
+        if label_contains(tx.label, card.settle_pattern) and tx.auto_source != "règlement carte":
+            card_settlement(db, tx, db.get(Account, tx.account_id))
+            n += 1
+    return n
 
 
 # ---------------------------------------------------------------- qui me doit quoi

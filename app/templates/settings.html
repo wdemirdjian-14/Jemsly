@@ -23,6 +23,8 @@
       <div><label>Périmètre (par défaut)</label>
         <select name="default_scope"><option value="">—</option>{% for k, v in SCOPES.items() %}<option value="{{ k }}" {{ 'selected' if a.default_scope == k }}>{{ v.split(' ')[0] }}</option>{% endfor %}</select></div>
     </div>
+    {% if a.kind == 'carte' %}<label>Libellé du prélèvement de la carte sur le compte courant <span class="sub">(ex. AMERICAN EXPRESS : devient un virement interne)</span></label>
+    <input name="settle_pattern" value="{{ a.settle_pattern }}">{% endif %}
     <p class="sub">Le solde de départ est celui du début de la journée indiquée ; les opérations antérieures sont ignorées dans le calcul du solde. Astuce : après un import, le bouton « recaler le solde » le règle automatiquement.</p>
     <label class="check"><input type="checkbox" name="archived" value="1" {{ 'checked' if a.archived }}> Archivé</label>
     <button class="btn small" type="submit">Enregistrer</button>

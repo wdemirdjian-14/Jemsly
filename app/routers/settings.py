@@ -72,6 +72,7 @@ async def account_save(request: Request, db: Session = Depends(get_db)):
     acc.kind = f.get("kind") or acc.kind or "courant"
     acc.default_scope = f.get("default_scope", "")
     acc.default_person_id = fint(f.get("default_person_id"))
+    acc.settle_pattern = f.get("settle_pattern", acc.settle_pattern or "").strip()
     db.add(acc)
     db.commit()
     return redirect(request, "/settings#comptes", "Compte enregistré.")

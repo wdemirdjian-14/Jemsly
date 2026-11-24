@@ -12,7 +12,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .db import Base
 
 SCOPES = {"perso": "Perso", "famille": "Famille", "jems": "Jems (note de frais)"}
-METHODS = {"cb": "💳 CB", "prlv": "Prélèvement", "vir": "Virement", "retrait": "Retrait", "pret": "Échéance prêt",
+METHODS = {"cb": "💳 CB", "amex": "💳 Amex", "prlv": "Prélèvement", "vir": "Virement", "retrait": "Retrait", "pret": "Échéance prêt",
            "cheque": "Chèque", "frais": "Frais", "autre": "Autre"}
 JEMS_STATUSES = {"a_declarer": "À déclarer", "declaree": "Déclarée", "remboursee": "Remboursée"}
 FREQUENCIES = {"hebdo": "Hebdomadaire", "mensuel": "Mensuelle", "trimestriel": "Trimestrielle",
@@ -44,6 +44,7 @@ class Account(Base):
     number: Mapped[str] = mapped_column(String(40), default="")  # n° de compte / de carte (détection à l'import)
     kind: Mapped[str] = mapped_column(String(10), default="courant")  # courant | joint | carte | epargne
     default_scope: Mapped[str] = mapped_column(String(10), default="")  # périmètre par défaut des opérations
+    settle_pattern: Mapped[str] = mapped_column(String(120), default="")  # carte : libellé du prélèvement mensuel
     default_person_id: Mapped[int | None] = mapped_column(ForeignKey("persons.id", ondelete="SET NULL"), nullable=True)
 
 
@@ -240,6 +241,10 @@ class Transaction(Base):
     category: Mapped[Category | None] = relationship()
     person: Mapped[Person | None] = relationship()
     tags: Mapped[list[Tag]] = relationship(secondary=transaction_tags, order_by="Tag.name")
+
+    @property
+    def is_card(self) -> bool:
+        return self.method in ("cb", "amex")
 
     @property
     def display_label(self) -> str:

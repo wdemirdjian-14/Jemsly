@@ -22,7 +22,7 @@
   </details>
   <input type="hidden" name="method" value="{{ filters.method or '' }}">
   <div class="filters" style="margin-bottom:4px">
-    {% for k, l in [('', 'Tout'), ('cb', '💳 CB'), ('prlv', 'Prélèvements'), ('vir', 'Virements'), ('retrait', 'Retraits'), ('pret', 'Prêts')] %}
+    {% for k, l in [('', 'Tout'), ('cb', '💳 CB'), ('amex', '💳 Amex'), ('prlv', 'Prélèvements'), ('vir', 'Virements'), ('retrait', 'Retraits'), ('pret', 'Prêts')] %}
     <a class="chip {{ '' if (filters.method or '') == k else 'grey' }}" style="font-size:13px;padding:6px 12px"
        href="?{{ base_qs }}{{ '&' if base_qs }}method={{ k }}">{{ l }}</a>
     {% endfor %}
