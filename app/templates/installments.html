@@ -8,6 +8,7 @@
   <ul class="list">
     {% for p in plans %}
     {% set paid = p.items|selectattr('transaction_id')|list|length %}
+    {% set left = p.items|rejectattr('transaction_id')|list %}
     <li><a class="row" href="/installments/{{ p.id }}">
       <div class="ico">🧩</div>
       <div class="grow">
@@ -15,7 +16,9 @@
         <div class="sub">{{ p.merchant }} · {{ paid }}/{{ p.count }} payé(s){% if p.person %} · {{ p.person.name }}{% endif %}</div>
         <div class="bar"><span style="width:{{ (100 * paid / p.count)|round|int }}%"></span></div>
       </div>
-      <div class="amt">{{ p.total_cents|money }}</div>
+      <div class="right">{% if left %}<div class="amt">reste {{ left|sum(attribute='amount_cents')|money }}</div>
+        <div class="sub">sur {{ p.total_cents|money }} · fin {{ left[-1].due_date.strftime('%m/%Y') }}</div>
+        {% else %}<div class="amt pos">✓ soldé</div><div class="sub">{{ p.total_cents|money }}</div>{% endif %}</div>
     </a></li>
     {% else %}
     <li class="empty" style="display:block"><div class="i">🧩</div>Aucun paiement fractionné en cours.</li>

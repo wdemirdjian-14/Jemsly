@@ -14,7 +14,7 @@ from .config import COOKIE_SECURE, SECRET_KEY
 from .db import SessionLocal, migrate
 from .models import User
 from .routers import core, finance, imports, reports, settings
-from .services import seed
+from .services import backfill_methods, seed
 from .templating import templates
 
 STATIC = Path(__file__).parent / "static"
@@ -24,6 +24,7 @@ migrate()
 with SessionLocal() as _db:
     seed(_db)
     ensure_admin(_db)
+    backfill_methods(_db)
 
 app = FastAPI(title="Wazzzxpense", docs_url=None, redoc_url=None, openapi_url=None)
 

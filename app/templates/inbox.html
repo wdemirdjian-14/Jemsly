@@ -1,45 +1,69 @@
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
-{% block heading %}À trier{% endblock %}
+{% block heading %}À classer{% endblock %}
 {% block content %}
-<div class="seg" style="margin-bottom:12px">
-  <label style="background:var(--card);font-weight:600;color:var(--primary)">📥 À catégoriser ({{ rows|length }})</label>
+<div class="seg" style="margin-bottom:10px">
+  <label style="background:var(--card);font-weight:600;color:var(--primary)">📥 À classer ({{ counts.all }})</label>
   <label onclick="location.href='/pending'">⏳ Achats en attente ({{ nav_pending }})</label>
 </div>
+{% if counts.all %}
+<div class="filters">
+  {% for k, l in [('', 'Tout (' ~ counts.all ~ ')'), ('cb', '💳 CB (' ~ counts.cb ~ ')'), ('autre', 'Prélèvements, virements… (' ~ counts.autre ~ ')')] %}
+  <a class="chip {{ '' if method == k else 'grey' }}" style="font-size:13px;padding:6px 12px" href="/inbox?method={{ k }}">{{ l }}</a>
+  {% endfor %}
+</div>
+<p class="sub" style="margin-top:0">Choisissez une catégorie (ou tapez-en une nouvelle, ex. « Voiture › Recharge ») : les opérations
+  similaires sont classées avec, et les prochaines le seront automatiquement.</p>
+{% endif %}
 
+<datalist id="cat-list">{% for c in categories %}<option value="{{ c.path }}">{% endfor %}</datalist>
 {% for g in groups %}{% set t = g[0] %}
 <form method="post" action="/transactions/{{ t.id }}" enctype="multipart/form-data" class="card">
-  <input type="hidden" name="back" value="/inbox">
+  <input type="hidden" name="back" value="/inbox?method={{ method }}">
   <input type="hidden" name="make_rule" value="1">
+  <input type="hidden" name="rule_pattern" value="{{ t.label|mkey }}">
+  <input type="hidden" name="apply_similar" value="1">
   <div style="display:flex;gap:10px;align-items:flex-start">
     <div class="grow">
-      <div style="font-weight:600;word-break:break-word">{{ t.label }}</div>
-      <div class="sub">{{ t.date|d }} · {{ t.account.name }}{% if g|length > 1 %} · <b style="color:var(--primary)">+ {{ g|length - 1 }} similaire(s)</b>{% endif %}</div>
+      <div style="font-weight:600;word-break:break-word">{{ t.display_label }}</div>
+      <div class="sub">{{ t.date|d }} · {{ t.account.name }}
+        {% if g|length > 1 %} · <b style="color:var(--primary)">+ {{ g|length - 1 }} similaire(s)</b>{% endif %}</div>
+      <span class="chip grey">{{ METHODS.get(t.method, '') }}</span>
     </div>
     <div class="amt {{ 'pos' if t.amount_cents > 0 }}">{{ t.amount_cents|smoney }}</div>
   </div>
-  <div class="grid2" style="margin-top:8px">
-    {{ m.category_select(categories, None) }}
-    {{ m.person_select(persons, None) }}
+  <div style="display:flex;gap:8px;margin-top:10px">
+    <div class="grow">{{ m.category_select(categories, None, datalist=False) }}</div>
+    <button class="btn" type="submit">✓</button>
   </div>
-  <div style="margin-top:8px">{{ m.scope_seg('famille') }}</div>
-  {{ m.jems_status() }}
-  <input name="tags" placeholder="Tags (facultatif)" style="margin-top:8px" autocomplete="off">
-  <details style="margin-top:6px"><summary class="sub">⚙️ Règle auto : libellé contenant « {{ t.label|mkey }} »</summary>
-    <input name="rule_pattern" placeholder="Laisser vide pour ne pas créer de règle" value="{{ t.label|mkey }}">
-    <label class="check"><input type="checkbox" name="apply_similar" value="1" checked> Ranger aussi les similaires</label>
+  <details style="margin-top:8px">
+    <summary class="sub">Plus : pour qui, libellé, facture, plusieurs fois…</summary>
+    <label>Mon libellé</label><input name="custom_label" placeholder="{{ t.label[:50] }}">
+    <div class="grid2">
+      <div><label>Pour qui</label>{{ m.person_select(persons, t.person_id) }}</div>
+      <div><label>Tags</label><input name="tags" placeholder="facultatif" autocomplete="off"></div>
+    </div>
+    <label>Périmètre</label>{{ m.scope_seg(t.scope) }}
+    {{ m.jems_status() }}
+    {% if t.amount_cents < 0 %}
+    <label>Payé en plusieurs fois ?</label>
+    <div class="seg">
+      {% for n, l in [(1, 'Non'), (3, '3 fois'), (4, '4 fois'), (10, '10 fois'), (12, '12 fois')] %}
+      <label><input type="radio" name="installments" value="{{ n }}" {{ 'checked' if n == 1 }}>{{ l }}</label>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {{ m.file_input() }}
+    <p class="sub" style="margin-bottom:0">Règle créée : libellé contenant « {{ t.label|mkey }} ».
+      <a href="/transactions/{{ t.id }}?back=/inbox">Détail de l'opération</a></p>
   </details>
-  <div class="actions">
-    <button class="btn small" type="submit">✓ Ranger</button>
-    <a class="btn small ghost" href="/transactions/{{ t.id }}?back=/inbox">Détails / facture</a>
-  </div>
 </form>
 {% else %}
-<div class="empty"><div class="i">🎉</div>Tout est rangé !</div>
+<div class="empty"><div class="i">🎉</div>Tout est classé !<br><a href="/import">Importer un relevé</a></div>
 {% endfor %}
 {% if rows %}
 <form method="post" action="/settings/reapply" style="text-align:center">
-  <button class="btn small ghost">↻ Réappliquer les règles</button>
+  <button class="btn small ghost" name="x" value="1">↻ Réappliquer les règles</button>
 </form>
 {% endif %}
 {% endblock %}

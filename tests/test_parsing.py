@@ -91,3 +91,12 @@ def test_detect_format():
     assert parse_file("releve.ofx", OFX.encode())[0] == "ofx"
     assert parse_file("x.csv", CA_CSV.encode("cp1252"))[0] == "csv"
     assert parse_file("x.pdf", b"%PDF-1.4 ...")[0] == "pdf"
+
+
+def test_label_contains_word_start():
+    from app.utils import label_contains
+    assert label_contains("Esso Ce Puteaux 92", "ESSO")
+    assert not label_contains("Nyx*nespresso Paris", "ESSO")
+    assert label_contains("Virement Jems 7000138-1Salaire De 2026-03", "SALAIRE")  # collé à un chiffre : OK
+    assert label_contains("Prlv AXA I000094-CONTRAT000001039763970400AX0", "1039763970")  # numéro au milieu : OK
+    assert label_contains("CB AMAZON PAYMENTS", "TEMU|AMAZON")

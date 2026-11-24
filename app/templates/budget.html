@@ -16,7 +16,7 @@
   {% set s = spent.get(c.id, 0) %}
   <div style="margin-bottom:14px">
     <div style="display:flex;align-items:center;gap:10px">
-      <span class="grow ell">{{ c.icon }} {{ c.name }}<br><span class="sub">dépensé {{ s|money }}</span></span>
+      <span class="grow ell">{{ c.emoji }} {{ c.name }}<br><span class="sub">dépensé {{ s|money }}</span></span>
       <input name="b{{ c.id }}" value="{{ c.budget_cents|eur }}" inputmode="decimal" placeholder="—" style="width:110px;text-align:right">
     </div>
     {% if c.budget_cents %}{{ m.budget_bar(s, c.budget_cents) }}{% endif %}

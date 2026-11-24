@@ -72,6 +72,7 @@ def test_parse_ca_text():
 
 def test_import_ca_pdf_card_and_balance(client, db, monkeypatch):
     monkeypatch.setattr(ca_pdf, "pdf_to_text", lambda raw: CA_TEXT)
+    client.post("/settings/rules", data={"pattern": "CARREFOUR", "category_id": "Courses"})
     r = client.post("/import", data={"account_id": ""}, files={"file": ("releve.pdf", b"%PDF-1.4 fake")},
                     follow_redirects=False)
     bid = r.headers["location"].rsplit("/", 1)[1]
@@ -88,7 +89,7 @@ def test_import_ca_pdf_card_and_balance(client, db, monkeypatch):
     assert account_balance(db, joint) == 144950  # solde de départ repris du relevé
     assert account_balance(db, card) == 0  # paiements carte + règlement s'annulent
     boul = db.scalar(select(Transaction).where(Transaction.label.contains("Carrefour")))
-    assert boul.account_id == card.id and boul.category.name == "Alimentation"
+    assert boul.account_id == card.id and boul.category.name == "Courses"
     settle = db.scalar(select(Transaction).where(Transaction.label.contains("Dépenses Carte")))
     assert settle.category.kind == "virement"
     # réimport du même relevé : rien de nouveau

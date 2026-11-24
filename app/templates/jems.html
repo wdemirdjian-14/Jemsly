@@ -26,7 +26,7 @@
         <input type="checkbox" name="ids" value="{{ t.id }}">
         <a class="row" href="/transactions/{{ t.id }}?back=/jems">
           <div class="grow"><div class="ell">{{ t.label }}</div>
-            <div class="sub">{{ t.date|d }} · {{ t.category.name if t.category else '—' }} · {{ JEMS_STATUSES.get(t.jems_status, '') }}{% if not t.attachments %} · <span style="color:var(--warn)">sans justificatif</span>{% else %} · 📎{% endif %}</div></div>
+            <div class="sub">{{ t.date|d }} · {{ t.category.path if t.category else '—' }} · {{ JEMS_STATUSES.get(t.jems_status, '') }}{% if not t.attachments %} · <span style="color:var(--warn)">sans justificatif</span>{% else %} · 📎{% endif %}</div></div>
           <div class="amt {{ 'pos' if t.amount_cents > 0 }}">{{ t.amount_cents|smoney }}</div>
         </a>
       </li>

@@ -47,14 +47,23 @@ def test_all_pages_render(client):
         assert r.status_code == 200, (url, r.text[:500])
 
 
+def _cat(db, text):
+    from app.services import resolve_category
+    c = resolve_category(db, text)
+    db.commit()
+    return c
+
+
 def test_import_rules_and_dedup(client, db):
+    # aucune catégorie au départ : on crée une règle avec une catégorie tapée à la volée
+    client.post("/settings/rules", data={"pattern": "CARREFOUR", "category_id": "Courses › Supermarché"})
     d = date.today().strftime("%d/%m/%Y")
     content = _csv([f"{d};CB CARREFOUR MARKET;-54,20", f"{d};VIR SALAIRE;3200,00", f"{d};MAGASIN INCONNU;-10,00"])
     _import(client, content)
     txs = db.scalars(select(Transaction)).all()
     assert len(txs) == 3
     carrefour = next(t for t in txs if "CARREFOUR" in t.label)
-    assert carrefour.category.name == "Alimentation" and carrefour.categorized
+    assert carrefour.category.path == "Courses › Supermarché" and carrefour.categorized
     # Réimport du même fichier : tout est détecté comme doublon et décoché
     _import(client, content, select_all=False)
     db.expire_all()
@@ -75,7 +84,7 @@ def test_ofx_import_and_balance_check(client, db):
 
 def test_pending_purchase_is_matched_on_import(client, db):
     today = date.today()
-    cat = db.scalar(select(Category).where(Category.name == "Vêtements"))
+    cat = _cat(db, "Vêtements")
     r = client.post("/pending", data={
         "amount": "79,99", "direction": "out", "label": "Chaussures Léo", "date": today.isoformat(),
         "category_id": str(cat.id), "person_id": "3", "scope": "famille", "tags": "rentrée, Léo",
@@ -107,7 +116,7 @@ def test_manual_categorisation_creates_rule_and_learns(client, db):
     d = date.today().strftime("%d/%m/%Y")
     _import(client, _csv([f"{d};CB BOULANGERIE DUPONT 12/10;-4,50", f"{d};CB BOULANGERIE DUPONT 11/10;-3,20"]))
     tx = db.scalars(select(Transaction)).first()
-    cat = db.scalar(select(Category).where(Category.name == "Alimentation"))
+    cat = _cat(db, "Courses")
     client.post(f"/transactions/{tx.id}", data={
         "category_id": str(cat.id), "person_id": "1", "scope": "famille", "tags": "pain",
         "make_rule": "1", "rule_pattern": "BOULANGERIE DUPONT", "apply_similar": "1"})
@@ -216,8 +225,8 @@ def test_backup(client):
 def test_settings_crud(client, db):
     client.post("/settings/accounts", data={"name": "Livret A", "initial_balance": "1000", "initial_date": "2026-01-01"})
     assert db.scalars(select(Account).where(Account.name == "Livret A")).one().initial_balance_cents == 100000
-    cat = db.scalar(select(Category).where(Category.name == "Divers"))
-    client.post("/settings/categories", data={"id": str(cat.id), "action": "delete"})
+    cat = _cat(db, "Divers")
+    client.post(f"/categories/{cat.id}", data={"action": "delete"})
     db.expire_all()
     assert db.scalar(select(Category).where(Category.name == "Divers")) is None
 
@@ -290,7 +299,7 @@ def test_fixed_charges_and_purchase_in_installments(client, db):
     assert page.index("Carte (variable)") > page.index("Retirés des charges fixes")  # listée à part
     assert "2736,51" in page.replace(" ", "")  # reste = 3000 - 263,49
     home = client.get("/").text
-    assert "Charges fixes" in home and "1 en cours" in home
+    assert "Charges fixes" in home and "Télé" in home and "reste à payer" in home
 
 
 
@@ -323,3 +332,123 @@ def test_fixed_list_is_editable(client, db):
     for view in ("theme", "person", "account", "category"):
         assert client.get(f"/fixed?view={view}").status_code == 200
     assert client.get(f"/fixed/insurance/{ins.id}").status_code == 200
+
+
+
+def test_categories_free_with_subcategories(client, db):
+    from app.services import month_stats
+    assert db.scalars(select(Category)).all() == []  # aucune catégorie prédéfinie
+    d = date.today()
+    _import(client, _csv([f"{d:%d/%m/%Y};PRLV AXA AUTO;-100,00", f"{d:%d/%m/%Y};TOTAL ACCESS;-60,00",
+                          f"{d:%d/%m/%Y};PRLV AXA HABITATION;-40,00"]))
+    t1, t2, t3 = db.scalars(select(Transaction).order_by(Transaction.amount_cents)).all()
+    client.post(f"/transactions/{t1.id}", data={"category_id": "Voiture › Assurance", "scope": "famille"})
+    client.post(f"/transactions/{t2.id}", data={"category_id": "voiture > carburant", "scope": "famille"})
+    client.post(f"/transactions/{t3.id}", data={"category_id": "Logement › Assurance", "scope": "famille"})
+    db.expire_all()
+    paths = sorted(c.path for c in db.scalars(select(Category)))
+    assert paths == ["Logement", "Logement › Assurance", "Voiture", "Voiture › Assurance", "Voiture › carburant"]
+    groups = {g["name"]: g for g in month_stats(db, f"{d:%Y-%m}")["groups"]}
+    assert groups["Voiture"]["total"] == 16000 and len(groups["Voiture"]["children"]) == 2
+    voiture = db.scalar(select(Category).where(Category.name == "Voiture"))
+    assert "TOTAL ACCESS" in client.get(f"/transactions?category={voiture.id}").text  # sous-catégories incluses
+    # fusion « Voiture › carburant » dans une nouvelle « Voiture › Énergie »
+    carbu = db.scalar(select(Category).where(Category.name == "carburant"))
+    client.post("/categories/new", data={"path": "Voiture › Énergie", "icon": "⚡"})
+    energie = db.scalar(select(Category).where(Category.name == "Énergie"))
+    client.post(f"/categories/{carbu.id}", data={"action": "merge", "target": str(energie.id)})
+    db.expire_all()
+    assert db.get(Transaction, t2.id).category.path == "Voiture › Énergie"
+    client.post("/categories/new", data={"path": "Inutile"})
+    client.post("/categories/prune")
+    db.expire_all()
+    assert db.scalar(select(Category).where(Category.name == "Inutile")) is None
+    assert client.get("/categories").status_code == 200 and client.get("/").status_code == 200
+
+
+def test_migrate_old_unique_category_table(tmp_path):
+    import sqlite3
+    path = tmp_path / "old.db"
+    con = sqlite3.connect(path)
+    con.executescript("""
+        CREATE TABLE categories (id INTEGER PRIMARY KEY, name VARCHAR(80) NOT NULL UNIQUE, icon VARCHAR(8) NOT NULL,
+                                 kind VARCHAR(10) NOT NULL, budget_cents INTEGER);
+        INSERT INTO categories VALUES (1, 'Restaurants', '🍽️', 'depense', 90000);
+    """)
+    con.commit()
+    con.close()
+    from sqlalchemy import create_engine
+    import app.db as dbmod
+    old_engine = dbmod.engine
+    dbmod.engine = create_engine(f"sqlite:///{path}")
+    try:
+        dbmod.migrate()
+    finally:
+        dbmod.engine = old_engine
+    con = sqlite3.connect(path)
+    assert not [r for r in con.execute("PRAGMA index_list(categories)") if r[2]]
+    con.execute("INSERT INTO categories (name, icon, kind) VALUES ('Restaurants', '', 'depense')")  # doublon permis
+    assert con.execute("SELECT budget_cents FROM categories WHERE id=1").fetchone()[0] == 90000
+
+
+def test_payment_method_and_cb_filter(client, db):
+    from app.services import payment_method
+    assert payment_method("CB CARREFOUR 12/10") == "cb"
+    assert payment_method("PAIEMENT PAR CARTE X1234 AMAZON") == "cb"
+    assert payment_method("Prlv AXA I000095") == "prlv"
+    assert payment_method("Virement Web Mle Dupont") == "vir"
+    assert payment_method("Ret DAB X6741 Orly") == "retrait"
+    assert payment_method("Ech Prêt 00002341196 Echéance") == "pret"
+    assert payment_method("Brasserie du coin 75 Paris", "carte") == "cb"
+    d = date.today().strftime("%d/%m/%Y")
+    _import(client, _csv([f"{d};CB FNAC;-30,00", f"{d};PRLV EDF;-80,00"]))
+    page = client.get("/transactions?method=cb").text
+    assert "CB FNAC" in page and "PRLV EDF" not in page
+    tx = db.scalar(select(Transaction).where(Transaction.label == "CB FNAC"))
+    client.post(f"/transactions/{tx.id}", data={"custom_label": "Livre anniversaire Tao", "scope": "famille"})
+    assert "Livre anniversaire Tao" in client.get("/transactions?q=anniversaire").text  # libellé perso cherchable
+
+
+def test_installment_from_transaction_and_remaining(client, db):
+    d = date.today()
+    _import(client, _csv([f"{d:%d/%m/%Y};CB APPLE STORE PARIS;-109,99"]))
+    tx = db.scalars(select(Transaction)).one()
+    r = client.post(f"/transactions/{tx.id}", data={"category_id": "High-tech › Téléphone", "scope": "perso",
+                                                   "installments": "10", "custom_label": "iPhone"},
+                    files={"files": ("facture.jpg", b"\xff\xd8img", "image/jpeg")}, follow_redirects=False)
+    assert r.status_code == 303
+    plan = db.scalars(select(InstallmentPlan)).one()
+    assert plan.count == 10 and plan.total_cents == 109990 and plan.items[0].transaction_id == tx.id
+    assert "989,91" in client.get("/installments").text.replace(" ", "")  # reste 9 x 109,99
+    # l'échéance suivante, au prochain relevé, est reconnue et rangée
+    nxt = plan.items[1].due_date
+    _import(client, _csv([f"{nxt:%d/%m/%Y};CB APPLE STORE PARIS;-109,99"]))
+    db.expire_all()
+    plan = db.scalars(select(InstallmentPlan)).one()
+    assert plan.items[1].transaction_id is not None
+    tx2 = db.get(Transaction, plan.items[1].transaction_id)
+    assert tx2.category.path == "High-tech › Téléphone"
+    assert "879,92" in client.get(f"/installments/{plan.id}").text.replace(" ", "")
+    assert client.get("/inbox").status_code == 200 and client.get(f"/transactions/{tx.id}").status_code == 200
+
+
+def test_standalone_invoice_matches_transaction(client, db):
+    from app.models import Attachment
+    d = date.today()
+    # facture prise en photo avant l'import : rattachée au relevé suivant
+    r = client.post("/attachments/new", data={"note": "Facture Fnac", "amount": "59,90", "doc_date": d.isoformat()},
+                    files={"files": ("fnac.jpg", b"\xff\xd8x", "image/jpeg")})
+    assert "rattachée automatiquement" in r.text
+    _import(client, _csv([f"{d:%d/%m/%Y};CB FNAC PARIS;-59,90"]))
+    db.expire_all()
+    a = db.scalars(select(Attachment)).one()
+    assert a.transaction is not None and a.transaction.label == "CB FNAC PARIS"
+    # facture ajoutée après l'import : retrouve l'opération tout de suite
+    _import(client, _csv([f"{d:%d/%m/%Y};CB DARTY;-399,00"]))
+    r = client.post("/attachments/new", data={"note": "Garantie lave-linge", "amount": "399"},
+                    files={"files": ("darty.pdf", b"%PDF", "application/pdf")})
+    assert "Rattachée" in r.text
+    # facture simplement conservée (sans montant)
+    client.post("/attachments/new", data={"note": "Notice chaudière"},
+                files={"files": ("notice.pdf", b"%PDF", "application/pdf")})
+    assert "Notice chaudière" in client.get("/attachments?q=chaudiere").text

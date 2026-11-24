@@ -14,7 +14,7 @@
 
 {% if nav_inbox or nav_pending %}
 <div class="grid2" style="margin-bottom:12px">
-  <a class="stat" href="/inbox"><div class="l">À catégoriser</div><div class="v">📥 {{ nav_inbox }}</div></a>
+  <a class="stat" href="/inbox"><div class="l">À classer</div><div class="v">📥 {{ nav_inbox }}</div></a>
   <a class="stat" href="/pending"><div class="l">Achats en attente</div><div class="v">⏳ {{ nav_pending }}</div></a>
 </div>
 {% endif %}
@@ -28,14 +28,23 @@
     <div><div class="sub">Solde</div><div class="amt" style="font-size:18px;{{ 'color:var(--bad)' if stats.net < 0 }}">{{ stats.net|smoney }}</div></div>
   </div>
   {% for c in spent %}
-  <a href="/transactions?month={{ month }}&category={{ c.id or 0 }}" style="display:block;color:inherit;margin-bottom:11px">
-    <div style="display:flex;justify-content:space-between;gap:8px">
-      <span class="ell">{{ c.icon }} {{ c.name }}</span>
-      <span class="amt">{{ c.total|money }}{% if c.budget %}<span class="sub"> / {{ c.budget|money }}</span>{% endif %}</span>
+  <details class="catgroup" style="margin-bottom:10px">
+    <summary style="display:block">
+      <div style="display:flex;justify-content:space-between;gap:8px">
+        <span class="ell">{{ c.icon }} {{ c.name }}{% if c.children %} <span class="sub">▾ {{ c.children|length }}</span>{% endif %}</span>
+        <span class="amt">{{ c.total|money }}{% if c.budget %}<span class="sub"> / {{ c.budget|money }}</span>{% endif %}</span>
+      </div>
+      {% if c.budget %}{{ m.budget_bar(c.total, c.budget) }}
+      {% else %}<div class="bar"><span style="width:{{ (100 * c.total / max_spent)|round }}%;opacity:.55"></span></div>{% endif %}
+    </summary>
+    <div style="padding:6px 0 0 14px">
+      {% for ch in c.children %}
+      <a href="/transactions?month={{ month }}&category={{ ch.id }}" style="display:flex;justify-content:space-between;color:inherit;padding:3px 0">
+        <span class="sub ell">{{ ch.name }}</span><span class="sub">{{ ch.total|money }}</span></a>
+      {% endfor %}
+      <a href="/transactions?month={{ month }}&category={{ c.id }}" class="sub">Voir les opérations →</a>
     </div>
-    {% if c.budget %}{{ m.budget_bar(c.total, c.budget) }}
-    {% else %}<div class="bar"><span style="width:{{ (100 * c.total / max_spent)|round }}%;opacity:.55"></span></div>{% endif %}
-  </a>
+  </details>
   {% else %}
   <p class="sub" style="margin:0">Aucune dépense ce mois-ci. <a href="/import">Importer un relevé</a></p>
   {% endfor %}
@@ -44,13 +53,22 @@
 </div>
 
 <!-- Budget fixe -->
-<div class="grid2">
-  <a class="stat" href="/fixed"><div class="l">Charges fixes / mois</div><div class="v">{{ fixed.total|money }}</div>
-    <div class="sub">reste {{ fixed.left|money }} sur les revenus fixes</div></a>
-  <a class="stat" href="/installments"><div class="l">Paiements en plusieurs fois</div>
-    <div class="v">{{ fixed.plans|length }} en cours</div>
-    <div class="sub">reste {{ fixed.plans|sum(attribute='left_cents')|money }}</div></a>
-</div>
+<a class="stat" href="/fixed" style="display:block;margin-bottom:12px"><div class="l">Charges fixes / mois</div>
+  <div class="v">{{ fixed.total|money }}</div><div class="sub">reste {{ fixed.left|money }} sur les revenus fixes</div></a>
+
+{% if fixed.plans %}
+<h2>Paiements en plusieurs fois <a href="/installments" style="float:right;text-transform:none">Tout voir</a></h2>
+<div class="card flush"><ul class="list">
+  {% for p in fixed.plans %}
+  <li><a class="row" href="/installments/{{ p.plan.id }}">
+    <div class="ico">🧩</div>
+    <div class="grow"><div class="ell">{{ p.plan.label }}</div>
+      <div class="sub">{{ p.plan.count - p.left_count }}/{{ p.plan.count }} payées · fin {{ p.end.strftime('%m/%Y') }}</div></div>
+    <div class="right"><div class="amt">{{ p.left_cents|money }}</div><div class="sub">reste à payer</div></div>
+  </a></li>
+  {% endfor %}
+</ul></div>
+{% endif %}
 
 {% if alerts %}
 <h2>À surveiller</h2>

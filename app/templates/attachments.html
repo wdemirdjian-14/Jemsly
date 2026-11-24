@@ -1,25 +1,44 @@
 {% extends "base.html" %}
+{% import "_macros.html" as m %}
 {% block back %}<a class="back" href="/more">‹</a>{% endblock %}
-{% block heading %}Factures & documents{% endblock %}
+{% block heading %}Factures{% endblock %}
 {% block content %}
-<div class="card flush">
+<form method="post" action="/attachments/new" enctype="multipart/form-data" class="card">
+  <b>+ Ranger une facture</b>
+  <p class="sub" style="margin:4px 0 0">Photo ou PDF. Avec le montant, elle se rattache toute seule à l'opération (déjà importée ou au prochain relevé).</p>
+  {{ m.file_input('Facture') }}
+  <label>Description</label><input name="note" placeholder="ex : Facture iPhone, garantie 2 ans">
+  <div class="grid2">
+    <div><label>Montant TTC (facultatif)</label><input name="amount" inputmode="decimal" placeholder="0,00"></div>
+    <div><label>Date d'achat</label><input type="date" name="doc_date" value="{{ today.isoformat() }}"></div>
+  </div>
+  <button class="btn block" type="submit">Enregistrer</button>
+</form>
+
+<form method="get" action="/attachments">
+  <input type="search" name="q" value="{{ q }}" placeholder="🔍 Rechercher une facture (nom, description, opération)">
+</form>
+<div class="card flush" style="margin-top:8px">
   <ul class="list">
     {% for a in rows %}
     <li>
       <div class="ico">{{ '🖼️' if a.mime.startswith('image') else '📄' }}</div>
       <div class="grow">
-        <a href="/attachments/{{ a.id }}" target="_blank" class="ell" style="display:block">{{ a.filename }}</a>
+        <a href="/attachments/{{ a.id }}" target="_blank" class="ell" style="display:block">{{ a.note or a.filename }}</a>
         <div class="sub">
-          {{ a.uploaded_at.strftime('%d/%m/%Y') }} · {{ (a.size / 1024)|round|int }} Ko
-          {% if a.transaction %} · <a href="/transactions/{{ a.transaction.id }}">{{ a.transaction.label|truncate(30) }} ({{ a.transaction.amount_cents|smoney }})</a>
-          {% elif a.pending %} · <a href="/pending/{{ a.pending.id }}">en attente : {{ a.pending.label|truncate(30) }}</a>
+          {{ (a.doc_date or a.uploaded_at).strftime('%d/%m/%Y') }}{% if a.amount_cents %} · {{ a.amount_cents|money }}{% endif %}
+          {% if a.transaction %} · <a href="/transactions/{{ a.transaction.id }}">{{ a.transaction.display_label|truncate(30) }} ({{ a.transaction.amount_cents|smoney }})</a>
+          {% elif a.pending %} · <a href="/pending/{{ a.pending.id }}">achat en attente : {{ a.pending.label|truncate(30) }}</a>
           {% elif a.loan_id %} · <a href="/loans/{{ a.loan_id }}">crédit</a>
-          {% elif a.insurance_id %} · <a href="/insurances/{{ a.insurance_id }}">assurance</a>{% endif %}
+          {% elif a.insurance_id %} · <a href="/insurances/{{ a.insurance_id }}">assurance</a>
+          {% elif a.installment_id %} · <a href="/installments/{{ a.installment_id }}">paiement en plusieurs fois</a>
+          {% elif a.amount_cents %} · <span style="color:var(--warn)">en attente de l'opération</span>
+          {% else %} · conservée{% endif %}
         </div>
       </div>
     </li>
     {% else %}
-    <li class="empty" style="display:block">Aucun document.</li>
+    <li class="empty" style="display:block">Aucune facture.</li>
     {% endfor %}
   </ul>
 </div>

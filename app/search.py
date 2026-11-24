@@ -73,7 +73,7 @@ def parse_query(text: str) -> dict:
 def apply_search(q, text: str = "", amin=None, amax=None, dfrom=None, dto=None):
     """Ajoute les conditions à une requête select(Transaction)."""
     p = parse_query(text)
-    label = func.norm(Transaction.label)
+    label = func.norm(Transaction.label + " " + Transaction.custom_label)
     note = func.norm(Transaction.note)
     absamt = func.abs(Transaction.amount_cents)
     for w in p["words"]:

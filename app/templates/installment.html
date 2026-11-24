@@ -4,6 +4,12 @@
 {% block heading %}{{ plan.label if plan else 'Paiement en plusieurs fois' }}{% endblock %}
 {% block content %}
 {% if plan %}
+{% set left = plan.items|rejectattr('transaction_id')|list %}
+<div class="card hero">
+  <div class="muted">Reste à payer</div>
+  <div class="big">{{ left|sum(attribute='amount_cents')|money }}</div>
+  <div style="font-size:14px">{{ plan.count - left|length }}/{{ plan.count }} échéances payées · total {{ plan.total_cents|money }}{% if left %} · dernière le {{ left[-1].due_date|d }}{% endif %}</div>
+</div>
 <div class="card flush">
   <ul class="list">
     {% for it in plan.items %}

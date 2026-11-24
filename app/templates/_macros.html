@@ -1,13 +1,14 @@
 {% macro tx_row(t, back='') -%}
 <li>
   <a class="row" href="/transactions/{{ t.id }}{% if back %}?back={{ back|urlencode }}{% endif %}">
-    <div class="ico">{{ t.category.icon if t.category else '❓' }}</div>
+    <div class="ico">{{ t.category.emoji if t.category else '❓' }}</div>
     <div class="grow">
-      <div class="ell">{{ t.insurance.name if t.insurance else (t.loan.name if t.loan else t.label) }}</div>
+      <div class="ell">{{ t.custom_label or (t.insurance.name if t.insurance else (t.loan.name if t.loan else t.label)) }}</div>
       <div class="sub ell">
-        {{ t.date|d }} · {{ t.category.name if t.category else 'À catégoriser' }}{% if t.person %} · {{ t.person.name }}{% endif %}
+        {{ t.date|d }} · {{ t.category.path if t.category else 'À classer' }}{% if t.person %} · {{ t.person.name }}{% endif %}
       </div>
       <div>
+        {% if t.method == 'cb' %}<span class="chip grey">💳 CB</span>{% elif t.method in ('prlv', 'vir', 'retrait', 'pret', 'cheque') %}<span class="chip grey">{{ METHODS[t.method] }}</span>{% endif %}
         {% if t.scope == 'jems' %}<span class="chip warn">Jems · {{ JEMS_STATUSES.get(t.jems_status, '') }}</span>{% endif %}
         {% for tag in t.tags %}<span class="chip">#{{ tag.name }}</span>{% endfor %}
         {% if t.attachments %}<span class="chip grey">📎 {{ t.attachments|length }}</span>{% endif %}
@@ -18,17 +19,11 @@
 </li>
 {%- endmacro %}
 
-{% macro category_select(categories, selected=None, name='category_id', empty='— Catégorie —') -%}
-<select name="{{ name }}">
-  <option value="">{{ empty }}</option>
-  {% for kind, label in [('depense', 'Dépenses'), ('revenu', 'Revenus'), ('virement', 'Virements')] %}
-  <optgroup label="{{ label }}">
-    {% for c in categories if c.kind == kind %}
-    <option value="{{ c.id }}" {{ 'selected' if c.id == selected }}>{{ c.icon }} {{ c.name }}</option>
-    {% endfor %}
-  </optgroup>
-  {% endfor %}
-</select>
+{% macro category_select(categories, selected=None, name='category_id', empty='Catégorie…', datalist=True) -%}
+{% set current = (categories|selectattr('id', 'equalto', selected)|first) if selected else none %}
+<input name="{{ name }}" list="cat-list" value="{{ current.path if current else '' }}" placeholder="{{ empty }}"
+       autocomplete="off" autocapitalize="sentences" enterkeyhint="done">
+{% if datalist %}<datalist id="cat-list">{% for c in categories %}<option value="{{ c.path }}">{% endfor %}</datalist>{% endif %}
 {%- endmacro %}
 
 {% macro person_select(persons, selected=None, empty='— Pour qui ? —') -%}
@@ -71,7 +66,11 @@
 
 {% macro file_input(label='Facture / justificatif') -%}
 <label>{{ label }}</label>
-<input type="file" name="files" accept="image/*,application/pdf" multiple>
+<div class="upload" data-upload>
+  <label class="btn small ghost">📷 Prendre en photo<input type="file" name="files" accept="image/*" capture="environment" hidden></label>
+  <label class="btn small ghost">📁 Photo ou fichier<input type="file" name="files" accept="image/*,application/pdf" multiple hidden></label>
+  <div class="sub" data-names></div>
+</div>
 {%- endmacro %}
 
 {% macro monthnav(month, base) -%}

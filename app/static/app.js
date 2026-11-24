@@ -33,3 +33,12 @@ document.addEventListener("submit", (e) => {
   const b = e.target.querySelector("button[type=submit]:not([name]), button:not([type]):not([name])");
   if (b) setTimeout(() => { b.disabled = true; b.dataset.label = b.textContent; b.textContent = "…"; }, 0);
 });
+
+// Factures : affiche le nom des fichiers choisis (les champs fichier sont cachés derrière les boutons).
+document.addEventListener("change", (e) => {
+  const input = e.target.closest("[data-upload] input[type=file]");
+  if (!input) return;
+  const box = input.closest("[data-upload]");
+  const names = [...box.querySelectorAll("input[type=file]")].flatMap((i) => [...i.files].map((f) => f.name));
+  box.querySelector("[data-names]").textContent = names.length ? "📎 " + names.join(", ") : "";
+});

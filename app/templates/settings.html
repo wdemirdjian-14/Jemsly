@@ -61,32 +61,16 @@
 </div>
 
 <h2 id="categories">Catégories</h2>
-<div class="card">
-  {% for c in categories %}
-  <form method="post" action="/settings/categories" style="display:flex;gap:6px;margin-bottom:8px">
-    <input type="hidden" name="id" value="{{ c.id }}">
-    <input name="icon" value="{{ c.icon }}" style="width:52px;text-align:center">
-    <input name="name" value="{{ c.name }}">
-    <select name="kind" style="width:110px">{% for k, l in [('depense','Dépense'),('revenu','Revenu'),('virement','Virement')] %}<option value="{{ k }}" {{ 'selected' if c.kind == k }}>{{ l }}</option>{% endfor %}</select>
-    <button class="btn small ghost" type="submit">✓</button>
-    <button class="btn small danger" name="action" value="delete" data-confirm="Supprimer la catégorie {{ c.name }} ?">✕</button>
-  </form>
-  {% endfor %}
-  <form method="post" action="/settings/categories" style="display:flex;gap:6px">
-    <input name="icon" placeholder="🙂" style="width:52px;text-align:center">
-    <input name="name" placeholder="Nouvelle catégorie" required>
-    <select name="kind" style="width:110px"><option value="depense">Dépense</option><option value="revenu">Revenu</option><option value="virement">Virement</option></select>
-    <button class="btn small" type="submit">+</button>
-  </form>
-  <p class="sub">« Virement » = mouvements entre vos comptes / vers l'épargne : ils sont exclus des entrées-sorties du bilan.</p>
-</div>
+<a class="card" href="/categories" style="display:flex;justify-content:space-between;color:inherit">
+  <span>🏷️ Gérer les catégories et sous-catégories<br><span class="sub">Renommer, ranger sous une autre, fusionner, budget, supprimer les inutilisées</span></span><b>›</b>
+</a>
 
 <h2 id="regles">Règles de catégorisation</h2>
 <p class="sub">Si le libellé bancaire contient le motif (plusieurs motifs séparés par « | »), l'opération est rangée automatiquement. Les règles sont aussi créées depuis l'écran « À trier ».</p>
 {% for r in rules %}
 <details class="card">
   <summary style="display:flex;justify-content:space-between;gap:8px"><span class="ell"><b>{{ r.pattern }}</b></span>
-    <span class="sub" style="white-space:nowrap">→ {{ r.category.name if r.category else '—' }} · {{ r.hits }}×</span></summary>
+    <span class="sub" style="white-space:nowrap">→ {{ r.category.path if r.category else '—' }} · {{ r.hits }}×</span></summary>
   <form method="post" action="/settings/rules">
     <input type="hidden" name="id" value="{{ r.id }}">
     <label>Motif</label><input name="pattern" value="{{ r.pattern }}">

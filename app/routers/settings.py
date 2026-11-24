@@ -10,19 +10,19 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from ..auth import MIN_LENGTH, hash_password, normalize_username, verify_password
 from ..config import DB_PATH, UPLOAD_DIR
 from ..db import get_db
 from ..models import (
-    Account, Category, InstallmentPlan, Insurance, Pending, Person, Recurrence, Rule, Transaction, User,
+    Account, Category, InstallmentPlan, Insurance, Loan, Pending, Person, Recurrence, Rule, Transaction, User,
 )
 from ..profile import apply_profile
-from ..services import account_balance, apply_auto, recategorize_all
+from ..services import account_balance, apply_auto, prune_categories, recategorize_all, resolve_category
 from ..templating import redirect, render
-from .common import fcents, fdate, fint, lookups
+from .common import fcat, fcents, fdate, fint, lookups
 
 router = APIRouter()
 
@@ -33,9 +33,16 @@ def _404():
 
 def _detach(db: Session, column: str, value: int):
     """Retire la référence (catégorie/personne) partout avant suppression."""
-    for model in (Transaction, Pending, Recurrence, InstallmentPlan, Insurance, Rule):
+    _repoint(db, column, value, None)
+
+
+CATEGORY_MODELS = (Transaction, Pending, Recurrence, InstallmentPlan, Insurance, Loan, Rule)
+
+
+def _repoint(db: Session, column: str, old: int, new: int | None):
+    for model in CATEGORY_MODELS:
         if hasattr(model, column):
-            db.execute(update(model).where(getattr(model, column) == value).values({column: None}))
+            db.execute(update(model).where(getattr(model, column) == old).values({column: new}))
 
 
 @router.get("/more")
@@ -70,22 +77,67 @@ async def account_save(request: Request, db: Session = Depends(get_db)):
     return redirect(request, "/settings#comptes", "Compte enregistré.")
 
 
-@router.post("/settings/categories")
-async def category_save(request: Request, db: Session = Depends(get_db)):
+@router.get("/categories")
+def categories_page(request: Request, db: Session = Depends(get_db)):
+    counts = dict(db.execute(select(Transaction.category_id, func.count(Transaction.id))
+                             .group_by(Transaction.category_id)).all())
+    roots = db.scalars(select(Category).where(Category.parent_id.is_(None))).all()
+    roots = sorted(roots, key=lambda c: c.name.lower())
+    return render(request, db, "categories.html", roots=roots, counts=counts, **lookups(db))
+
+
+@router.post("/categories/new")
+async def category_new(request: Request, db: Session = Depends(get_db)):
     f = await request.form()
-    cat = db.get(Category, fint(f.get("id")) or 0)
-    if cat and f.get("action") == "delete":
+    c = resolve_category(db, f.get("path", ""))
+    if not c:
+        return redirect(request, "/categories", "Indiquez un nom.")
+    if f.get("icon", "").strip():
+        c.icon = f["icon"].strip()[:8]
+    db.commit()
+    return redirect(request, "/categories", f"Catégorie « {c.path} » prête.")
+
+
+@router.post("/categories/prune")
+def category_prune(request: Request, db: Session = Depends(get_db)):
+    n = prune_categories(db)
+    db.commit()
+    return redirect(request, "/categories", f"{n} catégorie(s) inutilisée(s) supprimée(s).")
+
+
+@router.post("/categories/{cid}")
+async def category_save(cid: int, request: Request, db: Session = Depends(get_db)):
+    f = await request.form()
+    cat = db.get(Category, cid) or _404()
+    action = f.get("action", "save")
+    if action == "delete":
         _detach(db, "category_id", cat.id)
+        for ch in list(cat.children):
+            ch.parent_id = None
         db.delete(cat)
         db.commit()
-        return redirect(request, "/settings#categories", "Catégorie supprimée.")
-    cat = cat or Category()
-    cat.name = f.get("name", "").strip() or "Catégorie"
-    cat.icon = (f.get("icon", "").strip() or "•")[:8]
-    cat.kind = f.get("kind", "depense")
-    db.add(cat)
+        return redirect(request, "/categories", "Catégorie supprimée (ses opérations sont à reclasser).")
+    if action == "merge":
+        target = db.get(Category, fint(f.get("target")) or 0)
+        if not target or target.id == cat.id:
+            return redirect(request, "/categories", "Choisissez la catégorie qui remplace celle-ci.")
+        _repoint(db, "category_id", cat.id, target.id)
+        for ch in list(cat.children):
+            ch.parent_id = target.root.id if target.root.id != ch.id else None
+        db.delete(cat)
+        db.commit()
+        return redirect(request, "/categories", f"Fusionnée dans « {target.path} ».")
+    cat.name = f.get("name", "").strip() or cat.name
+    cat.icon = f.get("icon", "").strip()[:8]
+    cat.kind = f.get("kind", cat.kind)
+    parent = db.get(Category, fint(f.get("parent_id")) or 0)
+    if parent and (parent.id == cat.id or parent.parent_id or cat.children):
+        return redirect(request, "/categories", "Deux niveaux maximum : une sous-catégorie ne peut pas avoir d'enfants.")
+    cat.parent_id = parent.id if parent else None
+    v = f.get("budget", "").strip()
+    cat.budget_cents = abs(fcents(v)) if v and fcents(v) is not None else None
     db.commit()
-    return redirect(request, "/settings#categories", "Catégorie enregistrée.")
+    return redirect(request, "/categories", "Catégorie enregistrée.")
 
 
 @router.post("/settings/persons")
@@ -118,7 +170,7 @@ async def rule_save(request: Request, db: Session = Depends(get_db)):
     if not r.pattern:
         return redirect(request, "/settings#regles", "Le motif est obligatoire.")
     r.direction = f.get("direction", "tous")
-    r.category_id = fint(f.get("category_id"))
+    r.category_id = fcat(db, f.get("category_id"))
     r.person_id = fint(f.get("person_id"))
     r.scope = f.get("scope") or None
     r.tags = f.get("tags", "").strip()

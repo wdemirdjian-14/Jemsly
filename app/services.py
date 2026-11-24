@@ -1,6 +1,7 @@
 """Logique métier : tags, rapprochement automatique, soldes, échéancier, crédits, bilans."""
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -16,46 +17,16 @@ from .utils import (
     add_months, clean_tags, label_contains, merchant_key, month_bounds, norm, next_occurrence, shift_month,
 )
 
-DEFAULT_CATEGORIES = [
-    ("Alimentation", "🛒", "depense", 60000), ("Restaurants", "🍽️", "depense", 15000),
-    ("Logement", "🏠", "depense", None), ("Énergie & eau", "💡", "depense", None),
-    ("Télécom & abonnements", "📱", "depense", None), ("Transport & carburant", "🚗", "depense", 25000),
-    ("Santé", "🩺", "depense", None), ("Assurances", "🛡️", "depense", None),
-    ("Crédits", "🏦", "depense", None), ("Enfants & école", "🎒", "depense", None),
-    ("Vêtements", "👕", "depense", 10000), ("Loisirs & sorties", "🎉", "depense", 10000),
-    ("Vacances", "🏖️", "depense", None), ("Maison & équipement", "🛠️", "depense", None),
-    ("Impôts & taxes", "🧾", "depense", None), ("Frais bancaires", "💳", "depense", None),
-    ("Cadeaux", "🎁", "depense", None), ("Frais pro Jems", "💼", "depense", None),
-    ("Retraits espèces", "💶", "depense", None), ("Divers", "📦", "depense", None),
-    ("Salaire", "💰", "revenu", None), ("Remboursement Jems", "↩️", "revenu", None),
-    ("Aides & allocations", "🤝", "revenu", None), ("Autres revenus", "➕", "revenu", None),
-    ("Virement interne / épargne", "🔁", "virement", None),
-]
-DEFAULT_RULES = [
-    ("FRAIS|COMMISSION|AGIOS|COTISATION CARTE|INTERETS DEBITEURS", "debit", "Frais bancaires"),
-    ("RETRAIT DAB|RETRAIT|RET DAB", "debit", "Retraits espèces"),
-    ("CARREFOUR|LECLERC|AUCHAN|INTERMARCHE|LIDL|SUPER U|HYPER U|MONOPRIX|FRANPRIX|ALDI|CASINO|NETTO|GRAND FRAIS|PICARD", "debit", "Alimentation"),
-    ("EDF|ENGIE|TOTALENERGIES ELEC|VEOLIA|SUEZ|SAUR|ENI ", "debit", "Énergie & eau"),
-    ("TOTAL ACCESS|TOTALENERGIES|ESSO|SHELL|BP |AVIA|SNCF|RATP|PEAGE|VINCI|SANEF|APRR|UBER|BLABLACAR|PARKING|INDIGO",
-     "debit", "Transport & carburant"),
-    ("ORANGE|SFR|BOUYGUES|FREE MOBILE|FREE TELECOM|SOSH|RED BY|NETFLIX|SPOTIFY|DEEZER|DISNEY|CANAL|AMAZON PRIME|APPLE.COM|GOOGLE", "debit", "Télécom & abonnements"),
-    ("PHARMACIE|PHARMA |DOCTEUR|DR |CPAM|MEDECIN|LABO|OPTIC|DENTIST", "debit", "Santé"),
-    ("DGFIP|IMPOT|TRESOR PUBLIC|AMENDE", "debit", "Impôts & taxes"),
-    ("CAF |CAF-|ALLOCATIONS", "credit", "Aides & allocations"),
-]
+TRANSFER_CATEGORY = "Virement interne"
+CATEGORY_SEP = re.compile(r"\s*(?:›|>|/)\s*")
 
 
 def seed(db: Session):
-    if db.scalar(select(func.count(Category.id))):
+    """Installation : aucune catégorie prédéfinie (elles se créent au fil du classement)."""
+    if db.scalar(select(func.count(Person.id))):
         return
-    for name, icon, kind, budget in DEFAULT_CATEGORIES:
-        db.add(Category(name=name, icon=icon, kind=kind, budget_cents=budget))
     for name, role in [("Moi", "moi"), ("Ma femme", "conjoint"), ("Enfants", "enfant"), ("Famille", "famille")]:
         db.add(Person(name=name, role=role))
-    db.flush()
-    cats = {c.name: c.id for c in db.scalars(select(Category))}
-    for pattern, direction, cat in DEFAULT_RULES:
-        db.add(Rule(pattern=pattern, direction=direction, category_id=cats[cat], priority=200))
     db.add(Account(name="Compte courant", bank="", initial_date=date(2000, 1, 1)))
     db.commit()
 
@@ -81,12 +52,50 @@ def add_tags(db: Session, obj, raw):
             obj.tags.append(t)
 
 
-def category_by_name(db: Session, name: str, kind="depense", icon="•") -> Category:
-    c = db.scalar(select(Category).where(Category.name == name))
-    if not c:
-        c = Category(name=name, kind=kind, icon=icon)
-        db.add(c)
+def _find_category(db: Session, name: str, parent_id: int | None) -> Category | None:
+    key = norm(name)
+    for c in db.scalars(select(Category).where(Category.parent_id.is_(parent_id) if parent_id is None
+                                               else Category.parent_id == parent_id)):
+        if norm(c.name) == key:
+            return c
+    return None
+
+
+def resolve_category(db: Session, text: str, kind: str | None = None, create: bool = True) -> Category | None:
+    """« Voiture › Assurance », « Voiture > Assurance » ou « Restaurants » -> catégorie (créée si besoin).
+    Un nom seul désigne une catégorie existante de n'importe quel niveau, sinon une nouvelle catégorie principale."""
+    parts = [p.strip() for p in CATEGORY_SEP.split((text or "").strip()) if p.strip()]
+    if not parts:
+        return None
+    if len(parts) == 1:
+        c = _find_category(db, parts[0], None)
+        if c is None:
+            matches = [x for x in db.scalars(select(Category)) if norm(x.name) == norm(parts[0])]
+            c = matches[0] if len(matches) == 1 else None
+        if c is None and create:
+            c = Category(name=parts[0][:80], kind=kind or "depense")
+            db.add(c)
+            db.flush()
+        return c
+    parent = _find_category(db, parts[0], None)
+    if parent is None:
+        if not create:
+            return None
+        parent = Category(name=parts[0][:80], kind=kind or "depense")
+        db.add(parent)
         db.flush()
+    child = _find_category(db, parts[1], parent.id)
+    if child is None and create:
+        child = Category(name=parts[1][:80], kind=kind or parent.kind, parent_id=parent.id)
+        db.add(child)
+        db.flush()
+    return child
+
+
+def category_by_name(db: Session, name: str, kind="depense", icon="") -> Category:
+    c = resolve_category(db, name, kind=kind)
+    if icon and not c.icon:
+        c.icon = icon
     return c
 
 
@@ -217,9 +226,44 @@ def apply_learning(db: Session, tx: Transaction) -> bool:
     return False
 
 
+_METHOD_RULES = [
+    ("retrait", re.compile(r"\b(RET DAB|RETRAIT)\b")),
+    ("pret", re.compile(r"\b(ECH PRET|ECHEANCE PRET|REMBOURSEMENT PRET)\b")),
+    ("cb", re.compile(r"^(CB|CARTE|PAIEMENT PAR CARTE|PAIEMENT CB|ACHAT CB)\b|\bCB\*|\bCARTE X?\d{4}\b")),
+    ("prlv", re.compile(r"\b(PRLV|PRELEVEMENT|PRELEV)\b")),
+    ("vir", re.compile(r"\b(VIR|VIREMENT|WERO|VIR INST)\b")),
+    ("cheque", re.compile(r"\b(CHQ|CHEQUE|REMISE CHQ)\b")),
+    ("frais", re.compile(r"\b(FRAIS|COMMISSION|INTERETS DEBITEURS|AGIOS|COTISATION)\b")),
+]
+
+
+def payment_method(label: str, account_kind: str = "") -> str:
+    """Type d'opération : CB, prélèvement, virement, retrait, échéance de prêt, chèque, frais…"""
+    if account_kind == "carte":
+        return "cb"
+    lab = norm(label)
+    for method, rx in _METHOD_RULES:
+        if rx.search(lab):
+            return method
+    return "autre"
+
+
+def backfill_methods(db: Session) -> int:
+    n = 0
+    kinds = {a.id: a.kind for a in db.scalars(select(Account))}
+    for tx in db.scalars(select(Transaction).where(Transaction.method.in_(["", None]))):
+        tx.method = payment_method(tx.label, kinds.get(tx.account_id, ""))
+        n += 1
+    db.commit()
+    return n
+
+
 def apply_auto(db: Session, tx: Transaction) -> str:
     """Catégorise une opération fraîchement importée (tx doit avoir un id)."""
     acc = db.get(Account, tx.account_id)
+    if not tx.method:
+        tx.method = payment_method(tx.label, acc.kind if acc else "")
+    match_invoice_for_transaction(db, tx)
     if acc:
         if acc.default_scope and tx.scope in ("", "famille"):
             _set_scope(tx, acc.default_scope)
@@ -247,7 +291,7 @@ def apply_auto(db: Session, tx: Transaction) -> str:
     for loan in db.scalars(select(Loan).where(Loan.active.is_(True), Loan.match_pattern != "")):
         if tx.amount_cents < 0 and label_contains(tx.label, loan.match_pattern):
             tx.loan_id = loan.id
-            tx.category_id = category_by_name(db, "Crédits", icon="🏦").id
+            tx.category_id = loan.category_id or category_by_name(db, "Crédits", icon="🏦").id
             add_tags(db, tx, ["credit", loan.lender])
             tx.categorized = True
             tx.auto_source = "crédit"
@@ -257,7 +301,7 @@ def apply_auto(db: Session, tx: Transaction) -> str:
         if label_contains(tx.label, ins.match_pattern):
             tx.insurance_id = ins.id
             if tx.amount_cents < 0:
-                tx.category_id = category_by_name(db, "Assurances", icon="🛡️").id
+                tx.category_id = ins.category_id or category_by_name(db, "Assurances", icon="🛡️").id
                 _advance(ins, "next_due", tx.date, ins.frequency)
             add_tags(db, tx, ["assurance", ins.insurer] + ([ins.kind] if ins.kind != "autre" else []))
             tx.person_id = ins.person_id or tx.person_id
@@ -484,15 +528,34 @@ def month_stats(db: Session, month: str) -> dict:
     cat_rows = []
     for cid, total in sorted(by_cat.items(), key=lambda kv: -kv[1]):
         c = cats.get(cid)
-        cat_rows.append({"id": cid, "name": c.name if c else "Non catégorisé", "icon": c.icon if c else "❓",
+        cat_rows.append({"id": cid, "name": c.path if c else "Non classé", "icon": c.emoji if c else "❓",
                          "total": total, "budget": c.budget_cents if c else None})
     for c in cats.values():
         if c.budget_cents and c.id not in by_cat and c.kind == "depense":
-            cat_rows.append({"id": c.id, "name": c.name, "icon": c.icon, "total": 0, "budget": c.budget_cents})
+            cat_rows.append({"id": c.id, "name": c.path, "icon": c.emoji, "total": 0, "budget": c.budget_cents})
+    # vue d'ensemble : sous-catégories regroupées sous leur catégorie principale
+    groups: dict = {}
+    for row in cat_rows:
+        c = cats.get(row["id"])
+        root = c.root if c else None
+        key = root.id if root else 0
+        g = groups.setdefault(key, {"id": key, "name": root.name if root else "Non classé",
+                                    "icon": root.emoji if root else "❓", "total": 0,
+                                    "budget": root.budget_cents if root else None, "children": []})
+        g["total"] += row["total"]
+        if c and c.parent_id:
+            g["children"].append({**row, "name": c.name})
+    for g in groups.values():
+        g["children"].sort(key=lambda r: -r["total"])
+        rest = g["total"] - sum(ch["total"] for ch in g["children"])
+        if g["children"] and rest > 0:
+            g["children"].append({"id": g["id"], "name": "(sans sous-catégorie)", "icon": g["icon"],
+                                  "total": rest, "budget": None})
+    group_rows = sorted(groups.values(), key=lambda g: -g["total"])
     return {
         "month": month, "count": len(txs), "income": income, "expenses": expenses, "net": income - expenses,
         "savings_rate": round(100 * (income - expenses) / income) if income else None,
-        "categories": cat_rows, "persons": sorted(by_person.items(), key=lambda kv: -kv[1]),
+        "categories": cat_rows, "groups": group_rows, "persons": sorted(by_person.items(), key=lambda kv: -kv[1]),
         "scopes": sorted(by_scope.items(), key=lambda kv: -kv[1]),
         "merchants": sorted(by_merchant.items(), key=lambda kv: -kv[1])[:10],
         "uncategorized": sum(1 for t in txs if not t.categorized),
@@ -511,13 +574,13 @@ def inspect_month(db: Session, month: str, stats: dict | None = None) -> list[di
     prev = [ps for ps in prev if _complete(ps)]  # on ne compare qu'à des mois entièrement importés
     prev_by_cat = defaultdict(list)
     for ps in prev:
-        for c in ps["categories"]:
+        for c in ps["groups"]:
             prev_by_cat[c["id"]].append(c["total"])
 
     if stats["income"] and stats["net"] < 0:
         alerts.append({"level": "bad", "title": "Mois déficitaire",
                        "detail": f"Les dépenses dépassent les revenus de {-stats['net'] / 100:.2f} €."})
-    for c in stats["categories"]:
+    for c in stats["groups"]:
         if c["budget"] and c["total"] > c["budget"]:
             alerts.append({"level": "bad", "title": f"Budget dépassé : {c['icon']} {c['name']}",
                            "detail": f"{c['total'] / 100:.2f} € pour un budget de {c['budget'] / 100:.2f} €",
@@ -649,8 +712,12 @@ CATEGORY_THEMES = {
 
 
 def theme_of(kind: str, obj) -> str:
+    """Thématique d'une charge fixe : celle choisie, sinon la catégorie principale, sinon une déduction."""
     if obj.theme:
         return obj.theme
+    cat = getattr(obj, "category", None)
+    if cat is not None:
+        return cat.root.name
     if kind == "loan":
         return {"immo": "Logement", "travaux": "Logement", "auto": "Voiture & transport"}.get(obj.kind, "Crédits conso")
     if kind == "insurance":
@@ -702,13 +769,14 @@ def fixed_items(db: Session) -> tuple[list[dict], list[dict], list[dict]]:
         if st["remaining_count"] == 0 or not loan.monthly_cents:
             continue
         sub = f"fin ≈ {st['end_date']:%m/%Y}" if st.get("end_date") else "durée à compléter"
-        it = item("loan", loan, loan.name, loan.monthly_cents, f"/loans/{loan.id}", sub, "Crédits")
+        it = item("loan", loan, loan.name, loan.monthly_cents, f"/loans/{loan.id}", sub,
+                  loan.category.path if loan.category else "Crédits")
         (out if loan.is_fixed else excluded).append(it)
     for ins in db.scalars(select(Insurance).where(Insurance.active.is_(True))):
         months = FREQ_MONTHS.get(ins.frequency, 1)
         sub = "" if months == 1 else f"{ins.premium_cents / 100:.2f} € tous les {months} mois"
         it = item("insurance", ins, ins.name, ins.premium_cents / months, f"/insurances/{ins.id}", sub,
-                  "Assurances", ins.person_id)
+                  ins.category.path if ins.category else "Assurances", ins.person_id)
         (out if ins.is_fixed else excluded).append(it)
     for rec in db.scalars(select(Recurrence).where(Recurrence.active.is_(True))):
         if rec.end_date and rec.end_date < date.today():
@@ -718,7 +786,7 @@ def fixed_items(db: Session) -> tuple[list[dict], list[dict], list[dict]]:
         monthly = abs(rec.amount_cents) * PER_MONTH.get(rec.frequency, 1)
         sub = "" if rec.frequency == "mensuel" else f"{abs(rec.amount_cents) / 100:.2f} € ({rec.frequency})"
         it = item("recurrence", rec, rec.label, monthly, f"/recurrences/{rec.id}", sub,
-                  rec.category.name if rec.category else "", rec.person_id)
+                  rec.category.path if rec.category else "", rec.person_id)
         if not rec.is_fixed:
             excluded.append(it)
         elif rec.amount_cents > 0:
@@ -730,7 +798,7 @@ def fixed_items(db: Session) -> tuple[list[dict], list[dict], list[dict]]:
         if left:
             out.append(item("installment", plan, plan.label, left[0].amount_cents, f"/installments/{plan.id}",
                             f"{len(left)} échéance(s) restante(s), fin {left[-1].due_date:%m/%Y}",
-                            plan.category.name if plan.category else "", plan.person_id))
+                            plan.category.path if plan.category else "", plan.person_id))
     return out, income, excluded
 
 
@@ -773,7 +841,8 @@ def fixed_charges(db: Session, view: str = "theme") -> dict:
     for plan in db.scalars(select(InstallmentPlan)):
         left = [i for i in plan.items if i.transaction_id is None]
         if left:
-            plans.append({"plan": plan, "left_count": len(left), "left_cents": sum(i.amount_cents for i in left)})
+            plans.append({"plan": plan, "left_count": len(left), "left_cents": sum(i.amount_cents for i in left),
+                          "end": left[-1].due_date})
     return {"groups": ordered, "total": total_out, "income": income, "total_in": total_in,
             "left": total_in - total_out, "excluded": excluded, "view": key,
             "provisions": sorted(prov.values(), key=lambda p: -p["charges"]), "plans": plans}
@@ -819,5 +888,112 @@ def link_installments(db: Session, plan: InstallmentPlan) -> int:
         tx.note = f"Échéance {plan.items.index(item) + 1}/{plan.count} – {plan.label}"
         tx.categorized = bool(tx.category_id)
         tx.auto_source = "paiement en plusieurs fois"
+        n += 1
+    return n
+
+
+def plan_from_transaction(db: Session, tx: Transaction, count: int, label: str = "") -> InstallmentPlan:
+    """« Cette opération est la 1re échéance d'un paiement en N fois » : crée l'échéancier, la 1re échéance
+    est déjà payée par cette opération, les suivantes seront reconnues aux prochains relevés."""
+    amount = -tx.amount_cents
+    key = merchant_key(tx.label)
+    plan = InstallmentPlan(label=(label or tx.custom_label or key or tx.label)[:120], merchant=key[:100],
+                           total_cents=amount * count, count=count, first_date=tx.date,
+                           match_pattern=key if len(key) >= 3 else "", category_id=tx.category_id,
+                           person_id=tx.person_id, scope=tx.scope)
+    db.add(plan)
+    db.flush()
+    build_installments(db, plan, amount * count, count, tx.date)
+    plan.items[0].transaction_id = tx.id
+    add_tags(db, tx, ["plusieurs-fois"])
+    tx.note = (tx.note + "\n" if tx.note else "") + f"Échéance 1/{count} – {plan.label}"
+    db.flush()
+    return plan
+
+
+def _loose_invoices(db: Session):
+    return select(Attachment).where(
+        Attachment.amount_cents.is_not(None), Attachment.transaction_id.is_(None), Attachment.pending_id.is_(None),
+        Attachment.loan_id.is_(None), Attachment.insurance_id.is_(None), Attachment.installment_id.is_(None))
+
+
+def match_invoice_for_transaction(db: Session, tx: Transaction) -> int:
+    """À l'import : une facture rangée seule (montant + date) se rattache à l'opération correspondante."""
+    if tx.amount_cents >= 0:
+        return 0
+    n = 0
+    for a in db.scalars(_loose_invoices(db)):
+        same_amount = abs(a.amount_cents - (-tx.amount_cents)) <= 1
+        d = a.doc_date or a.uploaded_at.date()
+        if same_amount and d - timedelta(days=3) <= tx.date <= d + timedelta(days=45):
+            a.transaction_id = tx.id
+            n += 1
+    return n
+
+
+def match_transaction_for_invoice(db: Session, a: Attachment) -> Transaction | None:
+    """Facture ajoutée après coup : retrouve l'opération déjà importée (même montant, date proche)."""
+    if not a.amount_cents:
+        return None
+    d = a.doc_date or date.today()
+    cands = db.scalars(select(Transaction).where(
+        Transaction.amount_cents.between(-a.amount_cents - 1, -a.amount_cents + 1),
+        Transaction.date.between(d - timedelta(days=3), d + timedelta(days=45)))).all()
+    if not cands:
+        return None
+    tx = min(cands, key=lambda t: (len(t.attachments) > 0, abs((t.date - d).days)))
+    a.transaction_id = tx.id
+    return tx
+
+
+def _category_models():
+    return (Transaction, Pending, Recurrence, InstallmentPlan, Insurance, Loan, Rule)
+
+
+def repoint_category(db: Session, old: int, new: int | None):
+    from sqlalchemy import update
+    for model in _category_models():
+        db.execute(update(model).where(model.category_id == old).values(category_id=new))
+
+
+def move_category(db: Session, old_name: str, new_path: str) -> bool:
+    """Réorganisation : « Restaurants » -> « Sorties › Restaurants ». Les opérations suivent."""
+    olds = [c for c in db.scalars(select(Category)) if norm(c.name) == norm(old_name) or norm(c.path) == norm(old_name)]
+    if not olds:
+        return False
+    old = olds[0]
+    target = resolve_category(db, new_path, create=False)
+    if target and target.id != old.id:
+        repoint_category(db, old.id, target.id)
+        for ch in list(old.children):
+            ch.parent_id = target.root.id
+        db.delete(old)
+        db.flush()
+        return True
+    parts = [p.strip() for p in CATEGORY_SEP.split(new_path) if p.strip()]
+    if len(parts) == 2:
+        parent = resolve_category(db, parts[0])
+        if parent.id != old.id:
+            for ch in list(old.children):
+                ch.parent_id = parent.id
+            old.parent_id, old.name = parent.id, parts[1]
+    else:
+        old.parent_id, old.name = None, parts[0]
+    db.flush()
+    return True
+
+
+def prune_categories(db: Session) -> int:
+    """Supprime les catégories qui ne servent à rien (aucune opération, règle, charge, achat…)."""
+    used = set()
+    for model in _category_models():
+        used |= set(db.scalars(select(model.category_id).where(model.category_id.is_not(None))))
+    n = 0
+    for c in sorted(db.scalars(select(Category)).all(), key=lambda c: c.parent_id is None):  # enfants d'abord
+        db.refresh(c)
+        if c.id in used or c.children or c.name == TRANSFER_CATEGORY or c.budget_cents:
+            continue
+        db.delete(c)
+        db.flush()
         n += 1
     return n

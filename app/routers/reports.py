@@ -88,8 +88,9 @@ def report_ai(request: Request, db: Session = Depends(get_db)):
 def budget(request: Request, db: Session = Depends(get_db)):
     month = _month(request)
     stats = month_stats(db, month)
-    spent = {c["id"]: c["total"] for c in stats["categories"]}
-    cats = db.scalars(select(Category).where(Category.kind == "depense").order_by(Category.name)).all()
+    spent = {g["id"]: g["total"] for g in stats["groups"]}  # catégorie principale = elle + ses sous-catégories
+    cats = db.scalars(select(Category).where(Category.kind == "depense", Category.parent_id.is_(None))
+                      .order_by(Category.name)).all()
     provs = provisions(db)
     total_budget = sum(c.budget_cents or 0 for c in cats)
     return render(request, db, "budget.html", month=month, cats=cats, spent=spent, provisions=provs,
@@ -100,7 +101,7 @@ def budget(request: Request, db: Session = Depends(get_db)):
 @router.post("/budget")
 async def budget_save(request: Request, db: Session = Depends(get_db)):
     f = await request.form()
-    for c in db.scalars(select(Category).where(Category.kind == "depense")):
+    for c in db.scalars(select(Category).where(Category.kind == "depense", Category.parent_id.is_(None))):
         v = f.get(f"b{c.id}", "").strip()
         c.budget_cents = abs(fcents(v)) if v and fcents(v) is not None else None
     db.commit()

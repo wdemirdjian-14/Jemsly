@@ -27,6 +27,12 @@ Déploiement prévu : **https://wazzzxpense.walautao.fr** sur un VPS IONOS.
 
 | Besoin | Où |
 |---|---|
+| **Catégories libres** créées en classant (« Voiture › Assurance » = sous-catégorie), aucune prédéfinie ; renommer, ranger, fusionner, budget, ménage | *À classer*, *Plus › Catégories* |
+| Onglet **À classer** après chaque relevé : une carte par marchand, la catégorie en un champ, règle créée automatiquement | barre du bas |
+| **Type d'opération** reconnu (💳 CB, prélèvement, virement, retrait, prêt) et filtres rapides | *Opérations*, *À classer* |
+| **Libellé personnalisé** (« iPhone 17 de Laura »), recherché comme le libellé banque | détail d'une opération |
+| **Payé en plusieurs fois** depuis une opération : échéancier créé, **reste à payer** suivi, échéances suivantes reconnues | *À classer*, détail, Accueil |
+| **Factures** : 📷 photo ou 📁 fichier ; une facture seule avec son montant se rattache toute seule à l'opération | partout, *Plus › Factures* |
 | Catégories, **pour qui** (moi, ma femme, chaque enfant, famille), **périmètre** Perso / Famille / **Jems** | sur chaque opération / achat |
 | **Tags** libres et recherche (« toutes les dépenses AXA », « assurance-mini ») | *Opérations* (recherche), *Plus › Tags* |
 | Achats en attente de passage en banque, rapprochement automatique | bouton ＋, *À trier › Achats en attente* |

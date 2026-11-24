@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .models import Account, Category, Insurance, Loan, Person, Recurrence, Rule
-from .services import category_by_name, recategorize_all
+from .services import category_by_name, move_category, prune_categories, recategorize_all, resolve_category
 from .utils import parse_amount
 
 
@@ -41,13 +41,16 @@ def apply_profile(db: Session, data: dict) -> dict:
     persons = {p.name: p for p in db.scalars(select(Person))}
     stats["personnes"] = len(data.get("persons", []))
 
+    for old_name, new_path in (data.get("category_moves") or {}).items():
+        move_category(db, old_name, new_path)
     for item in data.get("categories", []):
-        c = db.scalar(select(Category).where(Category.name == item["name"])) or Category(name=item["name"])
-        c.icon = item.get("icon", c.icon or "•")
-        c.kind = item.get("kind", c.kind or "depense")
+        c = resolve_category(db, item["name"], kind=item.get("kind"))
+        if item.get("icon"):
+            c.icon = item["icon"]
+        if item.get("kind"):
+            c.kind = item["kind"]
         if "budget" in item:
             c.budget_cents = _cents(item["budget"])
-        db.add(c)
     db.flush()
     stats["catégories"] = len(data.get("categories", []))
 
@@ -107,6 +110,8 @@ def apply_profile(db: Session, data: dict) -> dict:
         l.known_remaining_at = _date(item.get("remaining_at"))
         l.active = item.get("active", True)
         l.theme = item.get("theme", l.theme or "")
+        if item.get("category"):
+            l.category_id = cat(item["category"])
         l.is_fixed = item.get("is_fixed", True)
         if item.get("account"):
             l.account_id = account(item["account"])
@@ -125,6 +130,8 @@ def apply_profile(db: Session, data: dict) -> dict:
         i.person_id = person(item.get("person"))
         i.notes = item.get("notes", i.notes or "")
         i.theme = item.get("theme", i.theme or "")
+        if item.get("category"):
+            i.category_id = cat(item["category"])
         i.is_fixed = item.get("is_fixed", True)
         if item.get("account"):
             i.account_id = account(item["account"])
@@ -151,4 +158,6 @@ def apply_profile(db: Session, data: dict) -> dict:
 
     db.flush()
     stats["opérations rangées"] = recategorize_all(db)
+    if data.get("prune_categories"):
+        stats["catégories inutiles supprimées"] = prune_categories(db)
     return stats

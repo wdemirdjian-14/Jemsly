@@ -15,13 +15,12 @@ from .. import ai, ca_pdf
 from ..db import get_db
 from ..importers import ImportErrorFR, parse_file
 from ..models import Account, ImportBatch, Pending, Transaction
-from ..services import account_balance, apply_auto, category_by_name
+from ..services import TRANSFER_CATEGORY, account_balance, apply_auto, category_by_name
 from ..templating import redirect, render
 from ..utils import norm
 from .common import fint, lookups
 
 router = APIRouter()
-TRANSFER_CATEGORY = "Virement interne / épargne"
 
 
 def _keys(rows):
@@ -170,7 +169,9 @@ def _confirm(db: Session, batch: ImportBatch, selected: set[int]) -> int:
             # prélèvement des dépenses carte : virement interne compte -> carte (les achats sont détaillés)
             transfer = transfer or category_by_name(db, TRANSFER_CATEGORY, kind="virement", icon="🔁")
             tx.category_id, tx.categorized, tx.auto_source = transfer.id, True, "règlement carte"
+            tx.method = "prlv"
             counterpart = Transaction(account_id=r["settle"], date=tx.date, label=f"Règlement carte : {tx.label}"[:300],
+                                      method="vir",
                                       amount_cents=-tx.amount_cents, import_key=f"settle:{r['key']}",
                                       batch_id=batch.id, category_id=transfer.id, categorized=True,
                                       auto_source="règlement carte")

@@ -20,12 +20,19 @@
     </select>
     <p class="sub" style="margin:6px 0 0">Dans la barre : <b>axa</b> (mot), <b>42,50</b> (montant exact), <b>&gt;100</b> / <b>&lt;20</b> / <b>50-100</b> (montants), <b>12/03</b> (jour), <b>03/2026</b> (mois). Combinable : <b>axa &gt;50</b>.</p>
   </details>
+  <input type="hidden" name="method" value="{{ filters.method or '' }}">
+  <div class="filters" style="margin-bottom:4px">
+    {% for k, l in [('', 'Tout'), ('cb', '💳 CB'), ('prlv', 'Prélèvements'), ('vir', 'Virements'), ('retrait', 'Retraits'), ('pret', 'Prêts')] %}
+    <a class="chip {{ '' if (filters.method or '') == k else 'grey' }}" style="font-size:13px;padding:6px 12px"
+       href="?{{ base_qs }}{{ '&' if base_qs }}method={{ k }}">{{ l }}</a>
+    {% endfor %}
+  </div>
   <div class="filters">
     <input type="month" name="month" value="{{ month }}">
     <select name="category">
       <option value="">Catégorie</option>
       <option value="0" {{ 'selected' if filters.category == '0' }}>❓ Non catégorisé</option>
-      {% for c in categories %}<option value="{{ c.id }}" {{ 'selected' if filters.category == c.id|string }}>{{ c.icon }} {{ c.name }}</option>{% endfor %}
+      {% for c in categories %}<option value="{{ c.id }}" {{ 'selected' if filters.category == c.id|string }}>{{ '   ↳ ' ~ c.name if c.parent_id else c.emoji ~ ' ' ~ c.name }}</option>{% endfor %}
     </select>
     <select name="person">
       <option value="">Pour qui</option>

@@ -89,12 +89,20 @@ def merchant_key(label: str) -> str:
     return " ".join(words[:3])
 
 
+def _pattern_in(p: str, lab: str) -> bool:
+    """Un motif qui commence par une lettre doit commencer un mot : « ESSO » trouve « ESSO CE PUTEAUX » mais pas
+    « NESPRESSO ». Un motif numérique (n° de contrat, de prêt) peut être n'importe où."""
+    if not p[0].isalpha():
+        return p in lab
+    return re.search(r"(?<![A-Z])" + re.escape(p), lab) is not None
+
+
 def label_contains(label: str, pattern: str) -> bool:
     if not pattern:
         return False
     pats = [p for p in (norm(x) for x in pattern.split("|")) if p]
     lab = norm(label)
-    return any(p in lab for p in pats)
+    return any(_pattern_in(p, lab) for p in pats)
 
 
 def month_bounds(month: str):

@@ -1,8 +1,8 @@
 {% extends "base.html" %}
-{% block heading %}À trier{% endblock %}
+{% block heading %}À classer{% endblock %}
 {% block content %}
 <div class="seg" style="margin-bottom:12px">
-  <label onclick="location.href='/inbox'">📥 À catégoriser ({{ nav_inbox }})</label>
+  <label onclick="location.href='/inbox'">📥 À classer ({{ nav_inbox }})</label>
   <label style="background:var(--card);font-weight:600;color:var(--primary)">⏳ Achats en attente ({{ waiting|length }})</label>
 </div>
 {% if waiting %}
@@ -13,7 +13,7 @@
   <ul class="list">
     {% for p in waiting %}
     <li><a class="row" href="/pending/{{ p.id }}">
-      <div class="ico">{{ p.category.icon if p.category else '⏳' }}</div>
+      <div class="ico">{{ p.category.emoji if p.category else '⏳' }}</div>
       <div class="grow"><div class="ell">{{ p.label }}</div>
         <div class="sub">{{ p.date|d }}{% if p.person %} · {{ p.person.name }}{% endif %}{% if p.scope == 'jems' %} · Jems{% endif %}{% if p.attachments %} · 📎{% endif %}</div></div>
       <div class="amt {{ 'pos' if p.amount_cents > 0 }}">{{ p.amount_cents|smoney }}</div>

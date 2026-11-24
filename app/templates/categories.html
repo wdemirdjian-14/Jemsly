@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block back %}<a class="back" href="/more">‹</a>{% endblock %}
+{% block heading %}Catégories{% endblock %}
+{% block content %}
+<p class="sub" style="margin-top:0">Les catégories se créent toutes seules quand vous classez une opération : tapez « Voiture » ou
+  « Voiture › Assurance » pour une sous-catégorie. Ici, vous les rangez et les renommez.</p>
+
+<form method="post" action="/categories/new" class="card" style="display:flex;gap:6px;align-items:center">
+  <input name="icon" placeholder="🙂" style="width:52px;text-align:center">
+  <input name="path" placeholder="Nouvelle : ex. Voiture › Recharge" required>
+  <button class="btn small" type="submit">+</button>
+</form>
+
+{% macro editor(c, is_child=False) %}
+<details style="padding:8px 0;{{ 'padding-left:18px' if is_child }}">
+  <summary style="display:flex;justify-content:space-between;gap:8px">
+    <span class="ell">{{ '↳ ' if is_child }}{{ c.emoji }} {{ c.name }}</span>
+    <span class="sub" style="white-space:nowrap">{{ counts.get(c.id, 0) }} op.{% if c.budget_cents %} · budget {{ c.budget_cents|money }}{% endif %} ✎</span>
+  </summary>
+  <form method="post" action="/categories/{{ c.id }}" style="margin-top:6px">
+    <div style="display:flex;gap:6px">
+      <input name="icon" value="{{ c.icon }}" placeholder="🙂" style="width:52px;text-align:center">
+      <input name="name" value="{{ c.name }}">
+    </div>
+    <div class="grid2">
+      <div><label>Ranger sous</label>
+        <select name="parent_id"><option value="">— (catégorie principale)</option>
+          {% for r in roots if r.id != c.id %}<option value="{{ r.id }}" {{ 'selected' if c.parent_id == r.id }}>{{ r.emoji }} {{ r.name }}</option>{% endfor %}
+        </select></div>
+      <div><label>Type</label>
+        <select name="kind">{% for k, l in [('depense','Dépense'),('revenu','Revenu'),('virement','Virement interne')] %}<option value="{{ k }}" {{ 'selected' if c.kind == k }}>{{ l }}</option>{% endfor %}</select></div>
+    </div>
+    {% if not is_child %}<label>Budget mensuel (€, facultatif)</label><input name="budget" inputmode="decimal" value="{{ c.budget_cents|eur }}">{% endif %}
+    <div class="actions">
+      <button class="btn small" type="submit">Enregistrer</button>
+      <a class="btn small ghost" href="/transactions?category={{ c.id }}">Opérations</a>
+    </div>
+  </form>
+  <form method="post" action="/categories/{{ c.id }}" class="actions" style="align-items:center">
+    <select name="target" style="flex:1"><option value="">Fusionner dans…</option>
+      {% for x in categories if x.id != c.id %}<option value="{{ x.id }}">{{ x.path }}</option>{% endfor %}</select>
+    <button class="btn small ghost" name="action" value="merge">Fusionner</button>
+    <button class="btn small danger" name="action" value="delete" data-confirm="Supprimer « {{ c.name }} » ? Ses opérations repasseront « à classer ».">Supprimer</button>
+  </form>
+</details>
+{% endmacro %}
+
+<div class="card">
+  {% for r in roots %}
+  <div style="{{ 'border-top:1px solid var(--line)' if not loop.first }}">
+    {{ editor(r) }}
+    {% for ch in r.children %}{{ editor(ch, True) }}{% endfor %}
+  </div>
+  {% else %}
+  <p class="sub" style="margin:0">Aucune catégorie pour l'instant : elles apparaîtront au fil du classement.</p>
+  {% endfor %}
+</div>
+<p class="sub">« Virement interne » : mouvements entre vos comptes ou vers l'épargne, exclus des dépenses et revenus.</p>
+<form method="post" action="/categories/prune" style="text-align:center">
+  <button class="btn small ghost" name="x" value="1" data-confirm="Supprimer toutes les catégories qui ne servent à rien ?">🧹 Supprimer les catégories inutilisées</button>
+</form>
+{% endblock %}

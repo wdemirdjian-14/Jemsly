@@ -15,7 +15,7 @@ from ..services import (
 )
 from ..templating import redirect, render
 from ..utils import label_contains
-from .common import fcents, fdate, fint, lookups, save_uploads
+from .common import fcat, fcents, fdate, fint, lookups, save_uploads
 
 router = APIRouter()
 
@@ -208,7 +208,7 @@ async def installment_save(request: Request, pid: int | None = None, db: Session
     plan.merchant = f.get("merchant", "").strip()
     plan.total_cents, plan.count, plan.first_date = total, count, first
     plan.match_pattern = f.get("match_pattern", "").strip()
-    plan.category_id = fint(f.get("category_id"))
+    plan.category_id = fcat(db, f.get("category_id"))
     plan.person_id = fint(f.get("person_id"))
     plan.scope = f.get("scope") or "famille"
     plan.notes = f.get("notes", "").strip()
@@ -278,7 +278,7 @@ async def recurrence_save(request: Request, rid: int | None = None, db: Session 
     rec.frequency = f.get("frequency", "mensuel")
     rec.next_date = fdate(f.get("next_date"), date.today())
     rec.end_date = fdate(f.get("end_date"))
-    rec.category_id = fint(f.get("category_id"))
+    rec.category_id = fcat(db, f.get("category_id"))
     rec.person_id = fint(f.get("person_id"))
     rec.scope = f.get("scope") or "famille"
     rec.match_pattern = f.get("match_pattern", "").strip()
@@ -314,7 +314,7 @@ async def fixed_new(request: Request, db: Session = Depends(get_db)):
                      amount_cents=abs(cents) if f.get("direction") == "in" else -abs(cents),
                      frequency=f.get("frequency", "mensuel"), next_date=fdate(f.get("next_date"), date.today()),
                      theme=f.get("theme", "").strip(), account_id=fint(f.get("account_id")),
-                     category_id=fint(f.get("category_id")), person_id=fint(f.get("person_id")),
+                     category_id=fcat(db, f.get("category_id")), person_id=fint(f.get("person_id")),
                      match_pattern=f.get("match_pattern", "").strip(), is_fixed=True)
     db.add(rec)
     db.flush()

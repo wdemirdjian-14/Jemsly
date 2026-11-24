@@ -12,7 +12,7 @@
   <ul class="list">
     {% for r in rows %}
     <li><a class="row" href="/recurrences/{{ r.id }}">
-      <div class="ico">{{ '🐷' if r.is_provision else (r.category.icon if r.category else '🔁') }}</div>
+      <div class="ico">{{ '🐷' if r.is_provision else (r.category.emoji if r.category else '🔁') }}</div>
       <div class="grow"><div class="ell">{{ r.label }} {% if not r.active %}<span class="chip grey">inactif</span>{% endif %}</div>
         <div class="sub">{{ FREQUENCIES.get(r.frequency) }} · prochaine {{ r.next_date|d }}{% if r.match_pattern %} · 🔗 {{ r.match_pattern }}{% endif %}</div></div>
       <div class="amt {{ 'pos' if r.amount_cents > 0 }}">{{ r.amount_cents|smoney }}</div>

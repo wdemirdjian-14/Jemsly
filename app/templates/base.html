@@ -11,7 +11,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/static/icon-192.png">
-  <link rel="stylesheet" href="/static/style.css?v=1">
+  <link rel="stylesheet" href="/static/style.css?v=2">
 </head>
 <body>
   <header class="top">
@@ -27,10 +27,10 @@
     <a href="/" class="{{ 'on' if path == '/' }}"><span class="i">🏠</span>Accueil</a>
     <a href="/transactions" class="{{ 'on' if path.startswith('/transactions') }}"><span class="i">📋</span>Opérations</a>
     <a href="/pending/new" class="fab" aria-label="Nouvel achat"><span class="i">+</span>Achat</a>
-    <a href="/inbox" class="{{ 'on' if path in ('/inbox', '/pending') }}"><span class="i">📥</span>À trier
+    <a href="/inbox" class="{{ 'on' if path in ('/inbox', '/pending') }}"><span class="i">📥</span>À classer
       {% if nav_inbox %}<span class="badge">{{ nav_inbox }}</span>{% endif %}</a>
     <a href="/more" class="{{ 'on' if path == '/more' }}"><span class="i">☰</span>Plus</a>
   </nav>
-  <script src="/static/app.js?v=1" defer></script>
+  <script src="/static/app.js?v=2" defer></script>
 </body>
 </html>

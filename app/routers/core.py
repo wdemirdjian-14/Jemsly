@@ -1,5 +1,6 @@
 """Accueil, opérations, boîte « à trier », achats en attente, tags, pièces jointes."""
 import uuid
+from urllib.parse import urlencode
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -9,15 +10,18 @@ from sqlalchemy.orm import Session
 
 from ..config import UPLOAD_DIR
 from ..db import get_db
-from ..models import Account, Attachment, InstallmentPlan, Pending, Rule, Tag, Transaction, transaction_tags
+from ..models import (
+    Account, Attachment, Category, InstallmentItem, InstallmentPlan, Pending, Rule, Tag, Transaction, transaction_tags,
+)
 from ..services import (
     account_balance, add_tags, apply_auto, build_installments, fixed_charges, inspect_month, link_installments,
-    link_pending, match_pending_to_existing, month_stats, pending_total, similar_uncategorized, upcoming,
+    link_pending, match_pending_to_existing, match_transaction_for_invoice, month_stats, pending_total,
+    plan_from_transaction, similar_uncategorized, upcoming,
 )
 from ..search import SORTS, apply_search
 from ..templating import redirect, render
-from ..utils import current_month, merchant_key, month_bounds
-from .common import fcents, fdate, fint, lookups, save_uploads
+from ..utils import current_month, merchant_key, month_bounds, norm
+from .common import fcat, fcents, fdate, fint, lookups, save_uploads
 
 router = APIRouter()
 
@@ -47,7 +51,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
     next30 = upcoming(db, today, today + timedelta(days=30))
     stats = month_stats(db, month)
     alerts = [a for a in inspect_month(db, month, stats) if a["level"] != "info"][:4]
-    spent = [c for c in stats["categories"] if c["total"]]
+    spent = [g for g in stats["groups"] if g["total"]]
     fixed = fixed_charges(db)
     return render(request, db, "dashboard.html", month=month, balances=balances, total=total, pending=pend,
                   available=total + pend, end_of_month=total + pend + sum(e.amount_cents for e in to_month_end),
@@ -71,13 +75,16 @@ def transactions(request: Request, db: Session = Depends(get_db)):
     if cat == "0":
         q = q.where(Transaction.category_id.is_(None))
     elif fint(cat):
-        q = q.where(Transaction.category_id == int(cat))
+        ids = [int(cat)] + list(db.scalars(select(Category.id).where(Category.parent_id == int(cat))))
+        q = q.where(Transaction.category_id.in_(ids))  # une catégorie inclut ses sous-catégories
     for field, col in (("person", Transaction.person_id), ("account", Transaction.account_id),
                        ("loan", Transaction.loan_id), ("insurance", Transaction.insurance_id)):
         if fint(p.get(field)):
             q = q.where(col == int(p[field]))
     if p.get("scope"):
         q = q.where(Transaction.scope == p["scope"])
+    if p.get("method"):
+        q = q.where(Transaction.method == p["method"])
     if p.get("tag"):
         q = q.join(transaction_tags).join(Tag).where(Tag.name == p["tag"])
     if p.get("dir") == "out":
@@ -89,8 +96,9 @@ def transactions(request: Request, db: Session = Depends(get_db)):
     inc = sum(t.amount_cents for t in rows if t.amount_cents > 0)
     limit = fint(p.get("limit")) or 200
     filters = {k: v for k, v in p.items() if v and k != "limit"}
+    base_qs = urlencode({k: v for k, v in filters.items() if k != "method"})
     return render(request, db, "transactions.html", rows=rows[:limit], total_count=len(rows), out=out, inc=inc,
-                  filters=filters, limit=limit, month=month, **lookups(db))
+                  filters=filters, base_qs=base_qs, limit=limit, month=month, **lookups(db))
 
 
 def _abs_cents(v):
@@ -106,7 +114,8 @@ def transaction_detail(tx_id: int, request: Request, db: Session = Depends(get_d
     if not pend:
         candidates = db.scalars(select(Pending).where(Pending.status == "attente")
                                 .order_by(func.abs(Pending.amount_cents - tx.amount_cents)).limit(5)).all()
-    return render(request, db, "transaction.html", tx=tx, pend=pend, candidates=candidates,
+    item = db.scalar(select(InstallmentItem).where(InstallmentItem.transaction_id == tx.id))
+    return render(request, db, "transaction.html", tx=tx, pend=pend, candidates=candidates, plan_item=item,
                   similar=similar_uncategorized(db, tx), suggested=merchant_key(tx.label),
                   back=request.query_params.get("back", "/transactions"), **lookups(db))
 
@@ -115,18 +124,25 @@ def transaction_detail(tx_id: int, request: Request, db: Session = Depends(get_d
 async def transaction_update(tx_id: int, request: Request, db: Session = Depends(get_db)):
     tx = db.get(Transaction, tx_id) or _404()
     f = await request.form()
-    tx.category_id = fint(f.get("category_id"))
+    tx.category_id = fcat(db, f.get("category_id"))
     tx.person_id = fint(f.get("person_id"))
     tx.scope = f.get("scope") or "famille"
     tx.jems_status = (f.get("jems_status") or "a_declarer") if tx.scope == "jems" else None
     if "note" in f:
         tx.note = f.get("note", "").strip()
+    if "custom_label" in f:
+        tx.custom_label = f.get("custom_label", "").strip()[:200]
     tx.tags = []
     add_tags(db, tx, f.get("tags", ""))
     tx.categorized = tx.category_id is not None
     tx.auto_source = "manuel"
     await save_uploads(db, f, transaction_id=tx.id)
-    msg = "Opération enregistrée."
+    msg = "Opération classée."
+    count = fint(f.get("installments")) or 1
+    if count > 1 and tx.amount_cents < 0 and not db.scalar(
+            select(InstallmentItem.id).where(InstallmentItem.transaction_id == tx.id)):
+        plan = plan_from_transaction(db, tx, count, tx.custom_label)
+        msg += f" Paiement en {count} fois créé : reste {(count - 1) * -tx.amount_cents / 100:.2f} € à payer."
     if f.get("make_rule") and f.get("rule_pattern", "").strip() and tx.category_id:
         db.add(Rule(pattern=f["rule_pattern"].strip(), category_id=tx.category_id, person_id=tx.person_id,
                     scope=tx.scope, tags=",".join(t.name for t in tx.tags),
@@ -195,13 +211,23 @@ async def manual_create(request: Request, db: Session = Depends(get_db)):
 
 @router.get("/inbox")
 def inbox(request: Request, db: Session = Depends(get_db)):
-    rows = db.scalars(select(Transaction).where(Transaction.categorized.is_(False))
-                      .order_by(Transaction.date.desc())).all()
-    # une carte par marchand : les opérations similaires sont rangées en même temps
+    method = request.query_params.get("method", "")
+    q = select(Transaction).where(Transaction.categorized.is_(False))
+    if method == "cb":
+        q = q.where(Transaction.method == "cb")
+    elif method == "autre":
+        q = q.where(Transaction.method != "cb")
+    rows = db.scalars(q.order_by(Transaction.date.desc())).all()
+    # une carte par marchand : les opérations similaires sont classées en même temps
     groups: dict[str, list[Transaction]] = {}
     for t in rows:
         groups.setdefault(merchant_key(t.label) or f"#{t.id}", []).append(t)
-    return render(request, db, "inbox.html", rows=rows, groups=list(groups.values()), **lookups(db))
+    counts = {"cb": db.scalar(select(func.count(Transaction.id)).where(Transaction.categorized.is_(False),
+                                                                         Transaction.method == "cb"))}
+    counts["all"] = db.scalar(select(func.count(Transaction.id)).where(Transaction.categorized.is_(False)))
+    counts["autre"] = counts["all"] - counts["cb"]
+    return render(request, db, "inbox.html", rows=rows, groups=list(groups.values()), method=method, counts=counts,
+                  **lookups(db))
 
 
 # ---------------------------------------------------------------- achats en attente
@@ -239,7 +265,7 @@ async def pending_save(request: Request, pid: int | None = None, db: Session = D
         first = fdate(f.get("date"), date.today())
         plan = InstallmentPlan(label=f.get("label", "").strip() or "Achat", total_cents=-cents, count=count,
                                first_date=first, merchant=f.get("keyword", "").strip(),
-                               match_pattern=f.get("keyword", "").strip(), category_id=fint(f.get("category_id")),
+                               match_pattern=f.get("keyword", "").strip(), category_id=fcat(db, f.get("category_id")),
                                person_id=fint(f.get("person_id")), scope=f.get("scope") or "famille",
                                notes=f.get("note", "").strip())
         db.add(plan)
@@ -257,7 +283,7 @@ async def pending_save(request: Request, pid: int | None = None, db: Session = D
     p.label = f.get("label", "").strip() or "Achat"
     p.amount_cents = cents
     p.keyword = f.get("keyword", "").strip()
-    p.category_id = fint(f.get("category_id"))
+    p.category_id = fcat(db, f.get("category_id"))
     p.person_id = fint(f.get("person_id"))
     p.scope = f.get("scope") or "famille"
     p.note = f.get("note", "").strip()
@@ -334,8 +360,37 @@ async def attachment_delete(aid: int, request: Request, db: Session = Depends(ge
 
 @router.get("/attachments")
 def attachments(request: Request, db: Session = Depends(get_db)):
-    rows = db.scalars(select(Attachment).order_by(Attachment.uploaded_at.desc()).limit(300)).all()
-    return render(request, db, "attachments.html", rows=rows)
+    q = request.query_params.get("q", "").strip()
+    stmt = select(Attachment).order_by(Attachment.uploaded_at.desc())
+    rows = db.scalars(stmt.limit(500)).all()
+    if q:
+        key = norm(q)
+        rows = [a for a in rows if key in norm(" ".join([a.filename, a.note or "",
+                                                          a.transaction.display_label if a.transaction else ""]))]
+    return render(request, db, "attachments.html", rows=rows[:300], q=q, today=date.today())
+
+
+@router.post("/attachments/new")
+async def attachment_new(request: Request, db: Session = Depends(get_db)):
+    """Ranger une facture seule (photo ou fichier) ; avec un montant, elle rejoint l'opération correspondante."""
+    f = await request.form()
+    cents = fcents(f.get("amount"))
+    links = {"note": f.get("note", "").strip()[:200], "amount_cents": abs(cents) if cents else None,
+             "doc_date": fdate(f.get("doc_date"))}
+    n = await save_uploads(db, f, **links)
+    if not n:
+        return redirect(request, "/attachments", "Choisissez une photo ou un fichier.")
+    db.flush()
+    msg = f"{n} facture(s) enregistrée(s)."
+    if links["amount_cents"]:
+        latest = db.scalars(select(Attachment).order_by(Attachment.id.desc()).limit(n)).all()
+        tx = None
+        for a in latest:
+            tx = match_transaction_for_invoice(db, a) or tx
+        msg += f" Rattachée à « {tx.display_label} » du {tx.date:%d/%m}." if tx else \
+            " Elle sera rattachée automatiquement quand l'opération apparaîtra sur un relevé."
+    db.commit()
+    return redirect(request, "/attachments", msg)
 
 
 def _404():

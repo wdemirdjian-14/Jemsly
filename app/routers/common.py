@@ -15,6 +15,18 @@ def fint(v):
         return None
 
 
+def fcat(db, v):
+    """Champ catégorie : identifiant, ou texte « Parent › Sous-catégorie » (créée si elle n'existe pas)."""
+    from ..services import resolve_category
+
+    if v in (None, "", "None"):
+        return None
+    if str(v).isdigit():
+        return int(v)
+    c = resolve_category(db, str(v))
+    return c.id if c else None
+
+
 def fdate(v, default=None):
     if not v:
         return default
@@ -31,7 +43,7 @@ def fcents(v, default=None):
 
 def lookups(db):
     return {
-        "categories": db.scalars(select(Category).order_by(Category.kind, Category.name)).all(),
+        "categories": sorted(db.scalars(select(Category)).all(), key=lambda c: c.path.lower()),
         "persons": db.scalars(select(Person).order_by(Person.id)).all(),
         "accounts": db.scalars(select(Account).where(Account.archived.is_(False)).order_by(Account.id)).all(),
         "today": date.today(),

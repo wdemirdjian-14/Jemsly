@@ -5,12 +5,16 @@
 {% block content %}
 <div class="card">
   <div class="sub">{{ tx.date|d }} · {{ tx.account.name }}</div>
-  <div style="font-size:17px;font-weight:600;margin:4px 0;word-break:break-word">{{ tx.label }}</div>
+  <div style="font-size:17px;font-weight:600;margin:4px 0;word-break:break-word">{{ tx.display_label }}</div>
+  {% if tx.custom_label %}<div class="sub" style="word-break:break-word">Banque : {{ tx.label }}</div>{% endif %}
+  <span class="chip grey">{{ METHODS.get(tx.method, '') }}</span>
   <div class="amt {{ 'pos' if tx.amount_cents > 0 }}" style="font-size:28px">{{ tx.amount_cents|smoney }}</div>
   <div>
     {% if tx.auto_source and tx.auto_source != 'manuel' %}<span class="chip good">Rangé auto : {{ tx.auto_source }}</span>{% endif %}
     {% if tx.loan %}<a class="chip" href="/loans/{{ tx.loan.id }}">🏦 {{ tx.loan.name }}</a>{% endif %}
     {% if tx.insurance %}<a class="chip" href="/insurances/{{ tx.insurance.id }}">🛡️ {{ tx.insurance.name }}</a>{% endif %}
+    {% if plan_item %}{% set left = plan_item.plan.items|rejectattr('transaction_id')|list %}
+    <a class="chip warn" href="/installments/{{ plan_item.plan_id }}">🧩 {{ plan_item.plan.label }} : reste {{ left|sum(attribute='amount_cents')|money }} ({{ left|length }} éch.)</a>{% endif %}
     {% if pend %}<a class="chip" href="/pending/{{ pend.id }}">⏳ Achat du {{ pend.date|d }} : {{ pend.label }}</a>{% endif %}
   </div>
   {{ m.attachments(tx.attachments, '/transactions/' ~ tx.id) }}
@@ -18,6 +22,8 @@
 
 <form method="post" action="/transactions/{{ tx.id }}" enctype="multipart/form-data" class="card">
   <input type="hidden" name="back" value="{{ back }}">
+  <label>Mon libellé <span class="sub">(facultatif, ex : « iPhone 16 de Laura »)</span></label>
+  <input name="custom_label" value="{{ tx.custom_label }}" placeholder="{{ tx.label[:60] }}">
   <label>Catégorie</label>{{ m.category_select(categories, tx.category_id) }}
   <label>Pour qui</label>{{ m.person_select(persons, tx.person_id) }}
   <label>Périmètre</label>{{ m.scope_seg(tx.scope) }}
@@ -26,6 +32,14 @@
   <input name="tags" value="{{ tx.tags|map(attribute='name')|join(', ') }}" autocomplete="off">
   <label>Note</label>
   <textarea name="note">{{ tx.note }}</textarea>
+  {% if tx.amount_cents < 0 and not plan_item %}
+  <label>Payé en plusieurs fois ?</label>
+  <div class="seg">
+    {% for n, l in [(1, 'Non'), (3, '3 fois'), (4, '4 fois'), (10, '10 fois'), (12, '12 fois')] %}
+    <label><input type="radio" name="installments" value="{{ n }}" {{ 'checked' if n == 1 }}>{{ l }}</label>
+    {% endfor %}
+  </div>
+  {% endif %}
   {{ m.file_input() }}
 
   <details style="margin-top:12px" {{ 'open' if not tx.categorized }}>

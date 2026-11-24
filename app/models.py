@@ -12,6 +12,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .db import Base
 
 SCOPES = {"perso": "Perso", "famille": "Famille", "jems": "Jems (note de frais)"}
+METHODS = {"cb": "💳 CB", "prlv": "Prélèvement", "vir": "Virement", "retrait": "Retrait", "pret": "Échéance prêt",
+           "cheque": "Chèque", "frais": "Frais", "autre": "Autre"}
 JEMS_STATUSES = {"a_declarer": "À déclarer", "declaree": "Déclarée", "remboursee": "Remboursée"}
 FREQUENCIES = {"hebdo": "Hebdomadaire", "mensuel": "Mensuelle", "trimestriel": "Trimestrielle",
                "semestriel": "Semestrielle", "annuel": "Annuelle"}
@@ -46,12 +48,28 @@ class Account(Base):
 
 
 class Category(Base):
+    """Catégorie libre, créée au fil de l'eau ; une sous-catégorie a un parent (« Voiture › Assurance »)."""
     __tablename__ = "categories"
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(80), unique=True)
-    icon: Mapped[str] = mapped_column(String(8), default="•")
+    name: Mapped[str] = mapped_column(String(80))
+    icon: Mapped[str] = mapped_column(String(8), default="")
     kind: Mapped[str] = mapped_column(String(10), default="depense")  # depense | revenu | virement
     budget_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)  # budget mensuel (positif)
+    parent_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"), nullable=True)
+    parent: Mapped[Category | None] = relationship(remote_side="Category.id", back_populates="children")
+    children: Mapped[list[Category]] = relationship(back_populates="parent", order_by="Category.name")
+
+    @property
+    def path(self) -> str:
+        return f"{self.parent.name} › {self.name}" if self.parent else self.name
+
+    @property
+    def root(self) -> Category:
+        return self.parent or self
+
+    @property
+    def emoji(self) -> str:
+        return self.icon or (self.parent.icon if self.parent and self.parent.icon else "") or "🏷️"
 
 
 class Person(Base):
@@ -89,6 +107,8 @@ class Loan(Base):
     known_remaining_at: Mapped[date | None] = mapped_column(Date, nullable=True)
     theme: Mapped[str] = mapped_column(String(40), default="")  # thématique des charges fixes (Logement, Voiture…)
     is_fixed: Mapped[bool] = mapped_column(Boolean, default=True)
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"), nullable=True)
+    category: Mapped[Category | None] = relationship()
 
 
 class Insurance(Base):
@@ -109,6 +129,8 @@ class Insurance(Base):
     theme: Mapped[str] = mapped_column(String(40), default="")
     is_fixed: Mapped[bool] = mapped_column(Boolean, default=True)
     account_id: Mapped[int | None] = mapped_column(ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True)
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"), nullable=True)
+    category: Mapped[Category | None] = relationship()
     person: Mapped[Person | None] = relationship()
 
 
@@ -204,11 +226,17 @@ class Transaction(Base):
     insurance_id: Mapped[int | None] = mapped_column(ForeignKey("insurances.id", ondelete="SET NULL"), nullable=True)
     recurrence_id: Mapped[int | None] = mapped_column(ForeignKey("recurrences.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    method: Mapped[str] = mapped_column(String(10), default="")  # cb | prlv | vir | retrait | cheque | pret | autre
+    custom_label: Mapped[str] = mapped_column(String(200), default="")  # libellé personnalisé (affiché)
 
     account: Mapped[Account] = relationship()
     category: Mapped[Category | None] = relationship()
     person: Mapped[Person | None] = relationship()
     tags: Mapped[list[Tag]] = relationship(secondary=transaction_tags, order_by="Tag.name")
+
+    @property
+    def display_label(self) -> str:
+        return self.custom_label or self.label
     loan: Mapped[Loan | None] = relationship()
     insurance: Mapped[Insurance | None] = relationship()
     attachments: Mapped[list[Attachment]] = relationship(back_populates="transaction")
@@ -265,6 +293,9 @@ class Attachment(Base):
     loan_id: Mapped[int | None] = mapped_column(ForeignKey("loans.id", ondelete="SET NULL"), nullable=True)
     insurance_id: Mapped[int | None] = mapped_column(ForeignKey("insurances.id", ondelete="SET NULL"), nullable=True)
     installment_id: Mapped[int | None] = mapped_column(ForeignKey("installment_plans.id", ondelete="SET NULL"), nullable=True)
+    note: Mapped[str] = mapped_column(String(200), default="")  # facture seule : description
+    amount_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)  # facture seule : montant TTC
+    doc_date: Mapped[date | None] = mapped_column(Date, nullable=True)  # facture seule : date d'achat
     transaction: Mapped[Transaction | None] = relationship(back_populates="attachments")
     pending: Mapped[Pending | None] = relationship(back_populates="attachments")
 

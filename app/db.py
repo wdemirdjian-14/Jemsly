@@ -36,6 +36,7 @@ def migrate():
     from sqlalchemy import inspect, text
 
     Base.metadata.create_all(engine)
+    _categories_without_unique_name()
     insp = inspect(engine)
     with engine.begin() as conn:
         for table in Base.metadata.sorted_tables:
@@ -51,3 +52,28 @@ def migrate():
                 if default is not None:
                     sql += f" DEFAULT {default!r}" if not isinstance(default, str) else f" DEFAULT '{default}'"
                 conn.execute(text(sql))
+
+
+def _categories_without_unique_name():
+    """Anciennes bases : le nom de catégorie était unique. Avec les sous-catégories, « Voiture › Assurance » et
+    « Logement › Assurance » doivent pouvoir coexister : on reconstruit la table (recette officielle SQLite)."""
+    raw = engine.raw_connection()
+    try:
+        cur = raw.cursor()
+        unique = [r for r in cur.execute("PRAGMA index_list(categories)").fetchall() if r[2]]
+        if not unique:
+            return
+        cols = [r[1] for r in cur.execute("PRAGMA table_info(categories)").fetchall()]
+        keep = [c for c in ("id", "name", "icon", "kind", "budget_cents", "parent_id") if c in cols]
+        cur.execute("PRAGMA foreign_keys=OFF")
+        cur.execute("BEGIN")
+        cur.execute("CREATE TABLE categories_new (id INTEGER NOT NULL PRIMARY KEY, name VARCHAR(80) NOT NULL, "
+                    "icon VARCHAR(8) NOT NULL DEFAULT '', kind VARCHAR(10) NOT NULL DEFAULT 'depense', "
+                    "budget_cents INTEGER, parent_id INTEGER REFERENCES categories (id) ON DELETE SET NULL)")
+        cur.execute(f"INSERT INTO categories_new ({', '.join(keep)}) SELECT {', '.join(keep)} FROM categories")
+        cur.execute("DROP TABLE categories")
+        cur.execute("ALTER TABLE categories_new RENAME TO categories")
+        cur.execute("COMMIT")
+        cur.execute("PRAGMA foreign_keys=ON")
+    finally:
+        raw.close()
