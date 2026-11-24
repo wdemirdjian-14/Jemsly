@@ -397,7 +397,7 @@ def test_payment_method_and_cb_filter(client, db):
     assert payment_method("PAIEMENT PAR CARTE X1234 AMAZON") == "cb"
     assert payment_method("Prlv AXA I000095") == "prlv"
     assert payment_method("Virement Web Mle Dupont") == "vir"
-    assert payment_method("Ret DAB X6741 Orly") == "retrait"
+    assert payment_method("Ret DAB X1234 Orly") == "retrait"
     assert payment_method("Ech Prêt 00002341196 Echéance") == "pret"
     assert payment_method("Brasserie du coin 75 Paris", "carte") == "cb"
     d = date.today().strftime("%d/%m/%Y")
