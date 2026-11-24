@@ -188,6 +188,7 @@ async def rule_save(request: Request, db: Session = Depends(get_db)):
     r.scope = f.get("scope") or None
     r.tags = f.get("tags", "").strip()
     r.priority = fint(f.get("priority")) or 100
+    r.contact = f.get("contact", "").strip()[:80]
     r.max_cents = abs(fcents(f.get("max_amount"))) if fcents(f.get("max_amount")) else None
     db.add(r)
     db.commit()

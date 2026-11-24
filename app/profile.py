@@ -92,6 +92,7 @@ def apply_profile(db: Session, data: dict) -> dict:
         r.tags = item.get("tags", "")
         r.priority = item.get("priority", 80)
         r.max_cents = abs(_cents(item["max_amount"])) if item.get("max_amount") else None
+        r.contact = item.get("contact", "")
         db.add(r)
     stats["règles"] = len(data.get("rules", []))
 

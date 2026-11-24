@@ -96,3 +96,13 @@
 </div>
 {% endif %}
 {%- endmacro %}
+
+{% macro contact_field(contacts, current='', hint='', amount=None, tx_amount=0) -%}
+<label>🤝 Qui me doit quoi <span class="sub">({{ 'dépense avancée pour' if tx_amount < 0 else 'remboursement de' }}…)</span></label>
+<div style="display:flex;gap:6px">
+  <input name="contact" list="contact-list" value="{{ current }}" placeholder="ex : Maman, Thibault" autocomplete="off">
+  <input name="contact_amount" inputmode="decimal" value="{{ amount|eur if amount }}" placeholder="montant (tout)" style="width:120px">
+</div>
+{% if hint and not current %}<button type="button" class="chip" data-fill-contact="{{ hint }}" style="border:0;margin-top:6px">→ {{ hint }}</button>{% endif %}
+<datalist id="contact-list">{% for c in contacts %}<option value="{{ c.name }}">{% endfor %}</datalist>
+{%- endmacro %}

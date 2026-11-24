@@ -282,6 +282,7 @@ class Rule(Base):
     tags: Mapped[str] = mapped_column(String(200), default="")  # séparés par des virgules
     priority: Mapped[int] = mapped_column(Integer, default=100)
     max_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)  # seulement si |montant| ≤ max
+    contact: Mapped[str] = mapped_column(String(80), default="")  # « qui me doit quoi » : avance / remboursement
     hits: Mapped[int] = mapped_column(Integer, default=0)
     category: Mapped[Category | None] = relationship()
     person: Mapped[Person | None] = relationship()
@@ -323,3 +324,32 @@ class User(Base):
     env_fingerprint: Mapped[str] = mapped_column(String(200), default="")  # dernier APP_PASSWORD appliqué
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
     last_login: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class Contact(Base):
+    """Proche avec qui on s'avance de l'argent (amis, famille hors foyer)."""
+    __tablename__ = "contacts"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(80))
+    note: Mapped[str] = mapped_column(Text, default="")
+    entries: Mapped[list[Owed]] = relationship(back_populates="contact", cascade="all, delete-orphan",
+                                               order_by="Owed.date.desc()")
+
+    @property
+    def balance(self) -> int:
+        """> 0 : il/elle me doit ; < 0 : je lui dois."""
+        return sum(e.amount_cents for e in self.entries)
+
+
+class Owed(Base):
+    """Ligne de « qui me doit quoi » : + = il/elle me doit (j'ai avancé), - = remboursé / il/elle m'a avancé."""
+    __tablename__ = "owed"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    contact_id: Mapped[int] = mapped_column(ForeignKey("contacts.id", ondelete="CASCADE"))
+    date: Mapped[date] = mapped_column(Date, default=date.today)
+    amount_cents: Mapped[int] = mapped_column(Integer)
+    label: Mapped[str] = mapped_column(String(200), default="")
+    transaction_id: Mapped[int | None] = mapped_column(ForeignKey("transactions.id", ondelete="CASCADE"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.now)
+    contact: Mapped[Contact] = relationship(back_populates="entries")
+    transaction: Mapped[Transaction | None] = relationship()

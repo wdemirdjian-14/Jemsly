@@ -11,10 +11,11 @@ from sqlalchemy.orm import Session
 from ..config import UPLOAD_DIR
 from ..db import get_db
 from ..models import (
-    Account, Attachment, Category, InstallmentItem, InstallmentPlan, Pending, Rule, Tag, Transaction, transaction_tags,
+    Account, Attachment, Category, Contact, InstallmentItem, InstallmentPlan, Owed, Pending, Rule, Tag, Transaction,
+    transaction_tags,
 )
 from ..services import (
-    account_balance, add_tags, advances_summary, apply_auto, build_installments, fixed_charges, inspect_month, link_installments,
+    account_balance, add_tags, advances_summary, apply_auto, contact_name_hint, link_contact, owed_summary, build_installments, fixed_charges, inspect_month, link_installments,
     link_pending, match_pending_to_existing, match_transaction_for_invoice, month_stats, pending_total,
     plan_from_transaction, similar_uncategorized, sync_advance_scope, upcoming,
 )
@@ -56,7 +57,8 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
     return render(request, db, "dashboard.html", month=month, balances=balances, total=total, pending=pend,
                   available=total + pend, end_of_month=total + pend + sum(e.amount_cents for e in to_month_end),
                   upcoming=next30[:6], stats=stats, alerts=alerts, spent=spent,
-                  max_spent=max([c["total"] for c in spent] or [1]), fixed=fixed, advances=advances_summary(db))
+                  max_spent=max([c["total"] for c in spent] or [1]), fixed=fixed, advances=advances_summary(db),
+                  owed=owed_summary(db))
 
 
 # ---------------------------------------------------------------- opérations
@@ -115,7 +117,9 @@ def transaction_detail(tx_id: int, request: Request, db: Session = Depends(get_d
         candidates = db.scalars(select(Pending).where(Pending.status == "attente")
                                 .order_by(func.abs(Pending.amount_cents - tx.amount_cents)).limit(5)).all()
     item = db.scalar(select(InstallmentItem).where(InstallmentItem.transaction_id == tx.id))
-    return render(request, db, "transaction.html", tx=tx, pend=pend, candidates=candidates, plan_item=item,
+    owed = db.scalar(select(Owed).where(Owed.transaction_id == tx.id))
+    return render(request, db, "transaction.html", tx=tx, pend=pend, candidates=candidates, plan_item=item, owed=owed,
+                  contacts=db.scalars(select(Contact).order_by(Contact.name)).all(), hint=contact_name_hint(tx.label),
                   similar=similar_uncategorized(db, tx), suggested=merchant_key(tx.label),
                   back=request.query_params.get("back", "/transactions"), **lookups(db))
 
@@ -139,6 +143,10 @@ async def transaction_update(tx_id: int, request: Request, db: Session = Depends
     sync_advance_scope(db, tx)
     await save_uploads(db, f, transaction_id=tx.id)
     msg = "Opération classée."
+    if "contact" in f:
+        entry = link_contact(db, tx, f.get("contact", ""), fcents(f.get("contact_amount")))
+        if entry:
+            msg += f" {entry.contact.name} : {'te doit' if entry.amount_cents > 0 else 'remboursé'} {abs(entry.amount_cents) / 100:.2f} €."
     count = fint(f.get("installments")) or 1
     if count > 1 and tx.amount_cents < 0 and not db.scalar(
             select(InstallmentItem.id).where(InstallmentItem.transaction_id == tx.id)):
@@ -228,6 +236,7 @@ def inbox(request: Request, db: Session = Depends(get_db)):
     counts["all"] = db.scalar(select(func.count(Transaction.id)).where(Transaction.categorized.is_(False)))
     counts["autre"] = counts["all"] - counts["cb"]
     return render(request, db, "inbox.html", rows=rows, groups=list(groups.values()), method=method, counts=counts,
+                  contacts=db.scalars(select(Contact).order_by(Contact.name)).all(),
                   **lookups(db))
 
 

@@ -486,3 +486,41 @@ def test_quick_buttons_and_jems_advances(client, db):
     nxt = db.scalar(select(Transaction).where(Transaction.amount_cents == -3000))
     assert nxt.category_id == resto.id and nxt.scope == "jems" and nxt.jems_status == "a_declarer"
     assert client.get("/jems").status_code == 200 and client.get("/categories").status_code == 200
+
+
+def test_who_owes_me_what(client, db):
+    from app.models import Contact, Owed
+    from app.services import contact_name_hint, owed_summary
+    assert contact_name_hint("Virement Wero vers Thibault Geffroy") == "Thibault Geffroy"
+    assert contact_name_hint("Vir Inst de M Ou Mme Durand") .endswith("Durand")
+    # règles : l'assurance de la voiture de maman (je paie) et son virement « assurance » (elle rembourse)
+    client.post("/settings/rules", data={"pattern": "CONTRAT555", "contact": "Maman", "priority": "5"})
+    client.post("/settings/rules", data={"pattern": "DURAND GHISLAINE", "direction": "credit", "contact": "Maman"})
+    d = date.today().strftime("%d/%m/%Y")
+    _import(client, _csv([f"{d};PRLV AXA CONTRAT555;-49,94", f"{d};VIR DURAND GHISLAINE assurance;50,00",
+                          f"{d};Virement Wero vers Thibault Geffroy;-126,00", f"{d};CB RESTO LE PETIT;-80,00"]))
+    maman = db.scalar(select(Contact).where(Contact.name == "Maman"))
+    assert maman.balance == 4994 - 5000  # elle a même un peu trop remboursé
+    # à la main depuis une opération : Thibault me doit le virement, et la moitié du resto
+    wero = db.scalar(select(Transaction).where(Transaction.label.contains("Wero")))
+    assert "Thibault Geffroy" in client.get("/inbox").text  # suggestion de nom
+    client.post(f"/transactions/{wero.id}", data={"contact": "Thibault Geffroy", "scope": "perso"})
+    resto = db.scalar(select(Transaction).where(Transaction.label.contains("RESTO")))
+    client.post(f"/transactions/{resto.id}", data={"contact": "thibault geffroy", "contact_amount": "40",
+                                                  "scope": "perso"})
+    db.expire_all()
+    thib = db.scalar(select(Contact).where(Contact.name == "Thibault Geffroy"))
+    assert thib.balance == 16600 and len(db.scalars(select(Contact)).all()) == 2
+    # il rembourse 100 € en espèces (ligne à la main), puis on solde
+    client.post(f"/owed/{thib.id}", data={"action": "add", "direction": "repaid", "amount": "100"})
+    db.expire_all()
+    assert db.get(Contact, thib.id).balance == 6600
+    s = owed_summary(db)
+    assert s["owed_to_me"] == 6600 and s["i_owe"] == 6
+    assert "Qui me doit quoi" in client.get("/").text and client.get(f"/owed/{thib.id}").status_code == 200
+    client.post(f"/owed/{thib.id}", data={"action": "settle"})
+    db.expire_all()
+    assert db.get(Contact, thib.id).balance == 0
+    # enlever le contact d'une opération supprime la ligne
+    client.post(f"/transactions/{wero.id}", data={"contact": "", "scope": "perso"})
+    assert db.scalar(select(Owed).where(Owed.transaction_id == wero.id)) is None

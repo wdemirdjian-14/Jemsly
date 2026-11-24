@@ -7,10 +7,10 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..models import (
-    THEMES, Attachment, InstallmentItem, InstallmentPlan, Insurance, Loan, Recurrence, Transaction,
+    THEMES, Attachment, Contact, Owed, InstallmentItem, InstallmentPlan, Insurance, Loan, Recurrence, Transaction,
 )
 from ..services import (
-    VIEWS, account_balance, apply_auto, build_installments, fixed_charges, fixed_items, link_installments,
+    VIEWS, account_balance, get_contact, owed_summary, apply_auto, build_installments, fixed_charges, fixed_items, link_installments,
     loan_status, pending_total, provisions, theme_of, upcoming,
 )
 from ..templating import redirect, render
@@ -385,3 +385,61 @@ async def fixed_item_save(kind: str, oid: int, request: Request, db: Session = D
 
 def _name(obj):
     return getattr(obj, "name", None) or getattr(obj, "label", "")
+
+
+# ---------------------------------------------------------------- qui me doit quoi
+
+@router.get("/owed")
+def owed_list(request: Request, db: Session = Depends(get_db)):
+    return render(request, db, "owed.html", summary=owed_summary(db), **lookups(db))
+
+
+@router.post("/owed")
+async def owed_new_contact(request: Request, db: Session = Depends(get_db)):
+    f = await request.form()
+    c = get_contact(db, f.get("name", ""))
+    if not c:
+        return redirect(request, "/owed", "Indiquez un nom.")
+    db.commit()
+    return redirect(request, f"/owed/{c.id}")
+
+
+@router.get("/owed/{cid}")
+def owed_detail(cid: int, request: Request, db: Session = Depends(get_db)):
+    c = db.get(Contact, cid) or _404()
+    return render(request, db, "owed_contact.html", c=c, **lookups(db))
+
+
+@router.post("/owed/{cid}")
+async def owed_save(cid: int, request: Request, db: Session = Depends(get_db)):
+    c = db.get(Contact, cid) or _404()
+    f = await request.form()
+    action = f.get("action", "add")
+    if action == "delete_contact":
+        db.delete(c)
+        db.commit()
+        return redirect(request, "/owed", "Contact supprimé.")
+    if action == "rename":
+        c.name = f.get("name", "").strip()[:80] or c.name
+        c.note = f.get("note", "").strip()
+        db.commit()
+        return redirect(request, f"/owed/{cid}", "Enregistré.")
+    if action == "delete_entry":
+        e = db.get(Owed, fint(f.get("entry_id")) or 0)
+        if e and e.contact_id == cid:
+            db.delete(e)
+            db.commit()
+        return redirect(request, f"/owed/{cid}", "Ligne supprimée.")
+    if action == "settle":
+        if c.balance:
+            db.add(Owed(contact_id=cid, date=date.today(), amount_cents=-c.balance, label="Solde réglé"))
+            db.commit()
+        return redirect(request, f"/owed/{cid}", "Compte remis à zéro.")
+    cents = fcents(f.get("amount"))
+    if not cents:
+        return redirect(request, f"/owed/{cid}", "Montant invalide.")
+    sign = {"lent": 1, "repaid": -1, "borrowed": -1, "i_repaid": 1}.get(f.get("direction"), 1)
+    db.add(Owed(contact_id=cid, date=fdate(f.get("date"), date.today()), amount_cents=sign * abs(cents),
+                label=f.get("label", "").strip()[:200]))
+    db.commit()
+    return redirect(request, f"/owed/{cid}", "Ajouté.")

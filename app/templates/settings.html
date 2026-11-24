@@ -84,6 +84,7 @@
     <label>Périmètre</label>
     <select name="scope"><option value="">— Inchangé —</option>{% for k, v in SCOPES.items() %}<option value="{{ k }}" {{ 'selected' if r.scope == k }}>{{ v }}</option>{% endfor %}</select>
     <label>Tags</label><input name="tags" value="{{ r.tags }}">
+    <label>🤝 Qui me doit quoi (proche)</label><input name="contact" value="{{ r.contact }}" placeholder="ex : Maman">
     <div class="actions">
       <button class="btn small" type="submit">Enregistrer</button>
       <button class="btn small danger" name="action" value="delete" data-confirm="Supprimer cette règle ?">Supprimer</button>

@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 
 from .config import APP_NAME
 from .models import FREQUENCIES, JEMS_STATUSES, METHODS, SCOPES, Pending, Transaction
+from .services import contact_name_hint
 from .utils import fmt_date, fmt_money, merchant_key, month_label, shift_month
 
 
@@ -45,6 +46,7 @@ env.filters["d"] = fmt_date
 env.filters["eur"] = lambda c: "" if c is None else f"{c / 100:.2f}"
 env.filters["month_label"] = month_label
 env.filters["mkey"] = merchant_key
+env.filters["contact_hint"] = contact_name_hint
 env.filters["md"] = markdown_lite
 env.globals.update(APP_NAME=APP_NAME, METHODS=METHODS, SCOPES=SCOPES, JEMS_STATUSES=JEMS_STATUSES, FREQUENCIES=FREQUENCIES,
                    shift_month=shift_month)

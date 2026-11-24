@@ -42,3 +42,11 @@ document.addEventListener("change", (e) => {
   const names = [...box.querySelectorAll("input[type=file]")].flatMap((i) => [...i.files].map((f) => f.name));
   box.querySelector("[data-names]").textContent = names.length ? "📎 " + names.join(", ") : "";
 });
+
+// « Qui me doit quoi » : remplit le nom suggéré (ex. destinataire d'un virement Wero).
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-fill-contact]");
+  if (!b) return;
+  b.closest("form").querySelector("input[name=contact]").value = b.dataset.fillContact;
+  b.remove();
+});

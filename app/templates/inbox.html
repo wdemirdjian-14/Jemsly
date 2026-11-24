@@ -39,7 +39,7 @@
     <button class="btn" type="submit">✓</button>
   </div>
   <details style="margin-top:8px">
-    <summary class="sub">Plus : pour qui, libellé, facture, plusieurs fois…</summary>
+    <summary class="sub">Plus : pour qui, libellé, facture, plusieurs fois, qui me doit…</summary>
     <label>Mon libellé</label><input name="custom_label" placeholder="{{ t.label[:50] }}">
     <div class="grid2">
       <div><label>Pour qui</label>{{ m.person_select(persons, t.person_id) }}</div>
@@ -55,6 +55,7 @@
       {% endfor %}
     </div>
     {% endif %}
+    {{ m.contact_field(contacts, '', t.label|contact_hint, None, t.amount_cents) }}
     {{ m.file_input() }}
     <p class="sub" style="margin-bottom:0">Règle créée : libellé contenant « {{ t.label|mkey }} ».
       <a href="/transactions/{{ t.id }}?back=/inbox">Détail de l'opération</a></p>

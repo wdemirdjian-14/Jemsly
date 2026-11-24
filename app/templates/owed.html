@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block back %}<a class="back" href="/more">‹</a>{% endblock %}
+{% block heading %}Qui me doit quoi{% endblock %}
+{% block content %}
+<div class="grid2">
+  <div class="stat"><div class="l">On me doit</div><div class="v pos">{{ summary.owed_to_me|money }}</div></div>
+  <div class="stat"><div class="l">Je dois</div><div class="v">{{ summary.i_owe|money }}</div></div>
+</div>
+<p class="sub">Rattachez une opération à un proche depuis « À classer » ou le détail d'une opération : une dépense = vous
+  avez avancé, un virement reçu = il/elle vous rembourse. Vous pouvez aussi ajouter une ligne à la main.</p>
+<div class="card flush">
+  <ul class="list">
+    {% for c, bal in summary.rows %}
+    <li><a class="row" href="/owed/{{ c.id }}">
+      <div class="ico">{{ c.name[:1]|upper }}</div>
+      <div class="grow"><div>{{ c.name }}</div>
+        <div class="sub">{% if bal > 0 %}te doit{% elif bal < 0 %}tu lui dois{% else %}à jour{% endif %} · {{ c.entries|length }} ligne(s)</div></div>
+      <div class="amt {{ 'pos' if bal > 0 }}" {% if bal < 0 %}style="color:var(--bad)"{% endif %}>{{ (bal|abs)|money }}</div>
+    </a></li>
+    {% else %}
+    <li class="empty" style="display:block"><div class="i">🤝</div>Personne pour l'instant.</li>
+    {% endfor %}
+  </ul>
+</div>
+<form method="post" action="/owed" class="card" style="display:flex;gap:6px">
+  <input name="name" placeholder="Nouveau : ex. Maman, Thibault" required>
+  <button class="btn small" type="submit">+</button>
+</form>
+{% endblock %}

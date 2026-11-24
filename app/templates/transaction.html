@@ -15,6 +15,7 @@
     {% if tx.insurance %}<a class="chip" href="/insurances/{{ tx.insurance.id }}">🛡️ {{ tx.insurance.name }}</a>{% endif %}
     {% if plan_item %}{% set left = plan_item.plan.items|rejectattr('transaction_id')|list %}
     <a class="chip warn" href="/installments/{{ plan_item.plan_id }}">🧩 {{ plan_item.plan.label }} : reste {{ left|sum(attribute='amount_cents')|money }} ({{ left|length }} éch.)</a>{% endif %}
+    {% if owed %}<a class="chip {{ 'good' if owed.amount_cents > 0 else '' }}" href="/owed/{{ owed.contact_id }}">🤝 {{ owed.contact.name }} {{ 'me doit' if owed.amount_cents > 0 else 'remboursé' }} {{ (owed.amount_cents|abs)|money }}</a>{% endif %}
     {% if pend %}<a class="chip" href="/pending/{{ pend.id }}">⏳ Achat du {{ pend.date|d }} : {{ pend.label }}</a>{% endif %}
   </div>
   {{ m.attachments(tx.attachments, '/transactions/' ~ tx.id) }}
@@ -41,6 +42,8 @@
     {% endfor %}
   </div>
   {% endif %}
+  {{ m.contact_field(contacts, owed.contact.name if owed else '', hint,
+                     (owed.amount_cents|abs) if owed and (owed.amount_cents|abs) != (tx.amount_cents|abs) else None, tx.amount_cents) }}
   {{ m.file_input() }}
 
   <details style="margin-top:12px" {{ 'open' if not tx.categorized }}>

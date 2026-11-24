@@ -1,6 +1,6 @@
 // Service worker minimal : rend l'app installable et met en cache les fichiers statiques.
 // Les pages restent toujours chargées depuis le serveur (données financières à jour).
-const CACHE = "wzx-v3";
+const CACHE = "wzx-v4";
 const ASSETS = ["/static/style.css", "/static/app.js", "/static/icon.svg"];
 
 self.addEventListener("install", (e) => {

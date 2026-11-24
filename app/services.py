@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .models import (
-    FREQ_MONTHS, Account, Attachment, Category, InstallmentItem, InstallmentPlan, Insurance, Loan,
+    Contact, Owed, FREQ_MONTHS, Account, Attachment, Category, InstallmentItem, InstallmentPlan, Insurance, Loan,
     Pending, Person, Recurrence, Rule, Tag, Transaction,
 )
 from .utils import (
@@ -182,6 +182,8 @@ def _advance(obj, attr: str, tx_date: date, frequency: str):
 
 def apply_rules(db: Session, tx: Transaction) -> bool:
     for rule in db.scalars(select(Rule).order_by(Rule.priority, Rule.id)):
+        if not (rule.category_id or rule.person_id or rule.scope or rule.tags):
+            continue  # règle « qui me doit quoi » seule : traitée à part
         if rule.direction == "debit" and tx.amount_cents > 0:
             continue
         if rule.direction == "credit" and tx.amount_cents < 0:
@@ -262,6 +264,7 @@ def apply_auto(db: Session, tx: Transaction) -> str:
     """Catégorise une opération fraîchement importée (tx doit avoir un id)."""
     source = _apply_auto(db, tx)
     sync_advance_scope(db, tx)
+    apply_contact_rules(db, tx)
     return source
 
 
@@ -1040,3 +1043,66 @@ def advances_summary(db: Session) -> dict:
             "declared": by_status["declaree"], "missing_receipts": sum(1 for t in rows if not t.attachments),
             "by_category": sorted(by_cat.items(), key=lambda kv: -kv[1]),
             "count_to_declare": sum(1 for t in rows if t.jems_status == "a_declarer")}
+
+
+
+# ---------------------------------------------------------------- qui me doit quoi
+
+def get_contact(db: Session, name: str) -> Contact | None:
+    name = (name or "").strip()
+    if not name:
+        return None
+    for c in db.scalars(select(Contact)):
+        if norm(c.name) == norm(name):
+            return c
+    c = Contact(name=name[:80])
+    db.add(c)
+    db.flush()
+    return c
+
+
+def link_contact(db: Session, tx: Transaction, name: str, amount_cents: int | None = None) -> Owed | None:
+    """Rattache une opération à un proche : une dépense = je l'ai avancée (il/elle me doit),
+    une entrée d'argent = il/elle me rembourse. `amount_cents` : seulement une partie (ex. sa part du resto)."""
+    existing = db.scalar(select(Owed).where(Owed.transaction_id == tx.id))
+    contact = get_contact(db, name)
+    if contact is None:
+        if existing:
+            db.delete(existing)
+        return None
+    amount = abs(amount_cents) if amount_cents else abs(tx.amount_cents)
+    signed = amount if tx.amount_cents < 0 else -amount
+    entry = existing or Owed(transaction_id=tx.id)
+    entry.contact_id, entry.amount_cents, entry.date = contact.id, signed, tx.date
+    entry.label = (tx.display_label or "")[:200]
+    db.add(entry)
+    db.flush()
+    return entry
+
+
+def apply_contact_rules(db: Session, tx: Transaction):
+    if db.scalar(select(Owed.id).where(Owed.transaction_id == tx.id)):
+        return
+    for rule in db.scalars(select(Rule).where(Rule.contact != "").order_by(Rule.priority, Rule.id)):
+        if rule.direction == "debit" and tx.amount_cents > 0 or rule.direction == "credit" and tx.amount_cents < 0:
+            continue
+        if rule.max_cents and abs(tx.amount_cents) > rule.max_cents:
+            continue
+        if label_contains(tx.label, rule.pattern):
+            link_contact(db, tx, rule.contact)
+            return
+
+
+def contact_name_hint(label: str) -> str:
+    """« Virement Wero vers Thibault Geffroy » -> « Thibault Geffroy » (suggestion, jamais appliquée seule)."""
+    m = re.search(r"(?:WERO|VIR(?:EMENT)?(?: INST)?)\s+(?:VERS|DE)\s+(.+)$", norm(label))
+    if not m:
+        return ""
+    name = re.sub(r"\b(M|MME|MLE|MR)\b\.?", "", m.group(1)).strip()
+    return name.title()[:60]
+
+
+def owed_summary(db: Session) -> dict:
+    contacts = db.scalars(select(Contact)).all()
+    rows = sorted(((c, c.balance) for c in contacts), key=lambda cb: -abs(cb[1]))
+    return {"rows": rows, "owed_to_me": sum(b for _, b in rows if b > 0), "i_owe": -sum(b for _, b in rows if b < 0)}

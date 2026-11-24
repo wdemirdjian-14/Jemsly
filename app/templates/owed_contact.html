@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block back %}<a class="back" href="/owed">‹</a>{% endblock %}
+{% block heading %}{{ c.name }}{% endblock %}
+{% block content %}
+{% set bal = c.balance %}
+<div class="card hero">
+  <div class="muted">{% if bal > 0 %}{{ c.name }} te doit{% elif bal < 0 %}Tu dois à {{ c.name }}{% else %}Vous êtes quittes{% endif %}</div>
+  <div class="big">{{ (bal|abs)|money }}</div>
+</div>
+{% if bal %}
+<form method="post" action="/owed/{{ c.id }}" style="text-align:center;margin-bottom:12px">
+  <button class="btn small ghost" name="action" value="settle" data-confirm="Marquer le compte comme réglé (remise à zéro) ?">✓ Réglé, remettre à zéro</button>
+</form>
+{% endif %}
+
+<form method="post" action="/owed/{{ c.id }}" class="card">
+  <input type="hidden" name="action" value="add">
+  <b>+ Ajouter à la main</b>
+  <div class="seg" style="margin-top:8px;flex-wrap:wrap">
+    <label><input type="radio" name="direction" value="lent" checked>J'ai avancé</label>
+    <label><input type="radio" name="direction" value="repaid">Il/elle m'a remboursé</label>
+    <label><input type="radio" name="direction" value="borrowed">Il/elle a avancé pour moi</label>
+  </div>
+  <div class="grid2">
+    <div><label>Montant</label><input name="amount" inputmode="decimal" required></div>
+    <div><label>Date</label><input type="date" name="date" value="{{ today.isoformat() }}"></div>
+  </div>
+  <label>Pour quoi</label><input name="label" placeholder="ex : resto du 12, places de concert">
+  <button class="btn block" type="submit">Ajouter</button>
+</form>
+
+<div class="card flush">
+  <ul class="list">
+    {% for e in c.entries %}
+    <li>
+      <div class="grow">
+        <div class="ell">{% if e.transaction %}<a href="/transactions/{{ e.transaction_id }}?back=/owed/{{ c.id }}">{{ e.label or e.transaction.display_label }}</a>{% else %}{{ e.label or '—' }}{% endif %}</div>
+        <div class="sub">{{ e.date|d }} · {{ 'avancé' if e.amount_cents > 0 else 'remboursé / avancé par lui-elle' }}{% if e.transaction %} · 🏦 relevé{% endif %}</div>
+      </div>
+      <div class="amt {{ 'pos' if e.amount_cents > 0 }}">{{ e.amount_cents|smoney }}</div>
+      <form method="post" action="/owed/{{ c.id }}"><input type="hidden" name="entry_id" value="{{ e.id }}">
+        <button class="btn small danger" name="action" value="delete_entry" data-confirm="Supprimer cette ligne ?">✕</button></form>
+    </li>
+    {% else %}
+    <li class="empty" style="display:block">Aucune ligne.</li>
+    {% endfor %}
+  </ul>
+</div>
+
+<details class="card"><summary class="sub">Renommer / supprimer</summary>
+  <form method="post" action="/owed/{{ c.id }}">
+    <label>Nom</label><input name="name" value="{{ c.name }}">
+    <label>Note</label><input name="note" value="{{ c.note }}">
+    <div class="actions">
+      <button class="btn small" name="action" value="rename">Enregistrer</button>
+      <button class="btn small danger" name="action" value="delete_contact" data-confirm="Supprimer {{ c.name }} et ses lignes ?">Supprimer</button>
+    </div>
+  </form>
+</details>
+{% endblock %}
