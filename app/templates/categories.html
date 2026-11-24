@@ -5,6 +5,9 @@
 <p class="sub" style="margin-top:0">Les catégories se créent toutes seules quand vous classez une opération : tapez « Voiture » ou
   « Voiture › Assurance » pour une sous-catégorie. Ici, vous les rangez et les renommez.</p>
 
+<div class="alert info"><b>⭐ Boutons rapides ({{ quick_count }})</b>Touchez l'étoile d'une catégorie pour en faire un bouton au
+  classement (ex. Divers, Courses, Jems › Restaurants). Sans étoile, l'appli propose vos catégories les plus utilisées.</div>
+
 <form method="post" action="/categories/new" class="card" style="display:flex;gap:6px;align-items:center">
   <input name="icon" placeholder="🙂" style="width:52px;text-align:center">
   <input name="path" placeholder="Nouvelle : ex. Voiture › Recharge" required>
@@ -12,9 +15,13 @@
 </form>
 
 {% macro editor(c, is_child=False) %}
-<details style="padding:8px 0;{{ 'padding-left:18px' if is_child }}">
+<div style="display:flex;align-items:flex-start;gap:4px" id="c{{ c.id }}">
+<form method="post" action="/categories/{{ c.id }}/quick" style="padding-top:6px;{{ 'padding-left:18px' if is_child }}">
+  <button class="starbtn {{ 'on' if c.is_quick }}" name="x" value="1" title="Bouton rapide">{{ '★' if c.is_quick else '☆' }}</button>
+</form>
+<details style="padding:8px 0;flex:1;min-width:0">
   <summary style="display:flex;justify-content:space-between;gap:8px">
-    <span class="ell">{{ '↳ ' if is_child }}{{ c.emoji }} {{ c.name }}</span>
+    <span class="ell">{{ '↳ ' if is_child }}{{ c.emoji }} {{ c.name }}{% if c.is_advance %} <span class="chip warn">avance de frais</span>{% endif %}</span>
     <span class="sub" style="white-space:nowrap">{{ counts.get(c.id, 0) }} op.{% if c.budget_cents %} · budget {{ c.budget_cents|money }}{% endif %} ✎</span>
   </summary>
   <form method="post" action="/categories/{{ c.id }}" style="margin-top:6px">
@@ -31,6 +38,8 @@
         <select name="kind">{% for k, l in [('depense','Dépense'),('revenu','Revenu'),('virement','Virement interne')] %}<option value="{{ k }}" {{ 'selected' if c.kind == k }}>{{ l }}</option>{% endfor %}</select></div>
     </div>
     {% if not is_child %}<label>Budget mensuel (€, facultatif)</label><input name="budget" inputmode="decimal" value="{{ c.budget_cents|eur }}">{% endif %}
+    <label class="check"><input type="checkbox" name="is_quick" value="1" {{ 'checked' if c.is_quick }}> ⭐ Bouton rapide au classement</label>
+    {% if not is_child %}<label class="check"><input type="checkbox" name="is_advance" value="1" {{ 'checked' if c.is_advance }}> 💼 Avance de frais (note de frais, ex. Jems) : ses dépenses sont suivies à part jusqu'au remboursement</label>{% endif %}
     <div class="actions">
       <button class="btn small" type="submit">Enregistrer</button>
       <a class="btn small ghost" href="/transactions?category={{ c.id }}">Opérations</a>
@@ -43,6 +52,7 @@
     <button class="btn small danger" name="action" value="delete" data-confirm="Supprimer « {{ c.name }} » ? Ses opérations repasseront « à classer ».">Supprimer</button>
   </form>
 </details>
+</div>
 {% endmacro %}
 
 <div class="card">

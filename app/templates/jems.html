@@ -1,7 +1,13 @@
 {% extends "base.html" %}
 {% block back %}<a class="back" href="/more">‹</a>{% endblock %}
-{% block heading %}Notes de frais Jems{% endblock %}
+{% block heading %}Avances de frais (Jems){% endblock %}
 {% block content %}
+<div class="card hero">
+  <div class="muted">En cours (avancé, pas encore remboursé)</div>
+  <div class="big">{{ advances.total|money }}</div>
+  <div style="font-size:14px">À déclarer {{ advances.to_declare|money }} · déclaré, en attente {{ advances.declared|money }}</div>
+  {% if advances.by_category %}<div style="font-size:13px;margin-top:6px">{% for n, v in advances.by_category %}{{ n }} : {{ v|money }}{{ ' · ' if not loop.last }}{% endfor %}</div>{% endif %}
+</div>
 <form method="get" action="/jems" data-autosubmit class="filters">
   <input type="month" name="month" value="{{ month }}">
   <select name="status">
@@ -25,13 +31,13 @@
       <li>
         <input type="checkbox" name="ids" value="{{ t.id }}">
         <a class="row" href="/transactions/{{ t.id }}?back=/jems">
-          <div class="grow"><div class="ell">{{ t.label }}</div>
+          <div class="grow"><div class="ell">{{ t.display_label }}</div>
             <div class="sub">{{ t.date|d }} · {{ t.category.path if t.category else '—' }} · {{ JEMS_STATUSES.get(t.jems_status, '') }}{% if not t.attachments %} · <span style="color:var(--warn)">sans justificatif</span>{% else %} · 📎{% endif %}</div></div>
           <div class="amt {{ 'pos' if t.amount_cents > 0 }}">{{ t.amount_cents|smoney }}</div>
         </a>
       </li>
       {% else %}
-      <li class="empty" style="display:block">Aucune dépense Jems. Choisissez le périmètre « Jems » sur une opération ou un achat.</li>
+      <li class="empty" style="display:block">Aucune avance de frais. Classez une dépense dans « Jems › … » (ou choisissez le périmètre Jems).</li>
       {% endfor %}
     </ul>
   </div>

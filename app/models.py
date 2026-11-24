@@ -56,6 +56,8 @@ class Category(Base):
     kind: Mapped[str] = mapped_column(String(10), default="depense")  # depense | revenu | virement
     budget_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)  # budget mensuel (positif)
     parent_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id", ondelete="SET NULL"), nullable=True)
+    is_quick: Mapped[bool] = mapped_column(Boolean, default=False)  # bouton rapide au classement
+    is_advance: Mapped[bool] = mapped_column(Boolean, default=False)  # avance de frais (note de frais, ex. Jems)
     parent: Mapped[Category | None] = relationship(remote_side="Category.id", back_populates="children")
     children: Mapped[list[Category]] = relationship(back_populates="parent", order_by="Category.name")
 
@@ -66,6 +68,11 @@ class Category(Base):
     @property
     def root(self) -> Category:
         return self.parent or self
+
+    @property
+    def advance(self) -> bool:
+        """Avance de frais : la catégorie ou sa catégorie principale est marquée comme telle."""
+        return self.is_advance or bool(self.parent and self.parent.is_advance)
 
     @property
     def emoji(self) -> str:

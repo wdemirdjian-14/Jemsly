@@ -12,8 +12,9 @@
   <a class="chip {{ '' if method == k else 'grey' }}" style="font-size:13px;padding:6px 12px" href="/inbox?method={{ k }}">{{ l }}</a>
   {% endfor %}
 </div>
-<p class="sub" style="margin-top:0">Choisissez une catégorie (ou tapez-en une nouvelle, ex. « Voiture › Recharge ») : les opérations
-  similaires sont classées avec, et les prochaines le seront automatiquement.</p>
+<p class="sub" style="margin-top:0">Touchez un bouton rapide, ou tapez une catégorie (nouvelle : « Voiture › Recharge ») : les
+  opérations similaires sont classées avec, et les prochaines le seront automatiquement.
+  <a href="/categories">Choisir mes boutons rapides</a></p>
 {% endif %}
 
 <datalist id="cat-list">{% for c in categories %}<option value="{{ c.path }}">{% endfor %}</datalist>
@@ -32,8 +33,9 @@
     </div>
     <div class="amt {{ 'pos' if t.amount_cents > 0 }}">{{ t.amount_cents|smoney }}</div>
   </div>
-  <div style="display:flex;gap:8px;margin-top:10px">
-    <div class="grow">{{ m.category_select(categories, None, datalist=False) }}</div>
+  {{ m.quick_buttons(quick) }}
+  <div style="display:flex;gap:8px;margin-top:8px">
+    <div class="grow">{{ m.category_select(categories, None, datalist=False, empty='Autre catégorie…') }}</div>
     <button class="btn" type="submit">✓</button>
   </div>
   <details style="margin-top:8px">

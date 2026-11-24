@@ -150,3 +150,7 @@ th { font-size: 12px; color: var(--muted); font-weight: 600; }
 .upload { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .upload [data-names] { flex-basis: 100%; }
 details.catgroup > summary { list-style: none; }
+.quick { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.quick .chip { border: 0; font: inherit; font-size: 13px; padding: 7px 11px; cursor: pointer; }
+.starbtn { border: 0; background: none; font-size: 20px; line-height: 1; color: var(--muted); cursor: pointer; padding: 2px 4px; }
+.starbtn.on { color: #f5b301; }

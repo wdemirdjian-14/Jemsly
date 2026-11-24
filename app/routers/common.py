@@ -15,6 +15,11 @@ def fint(v):
         return None
 
 
+def form_category(db, f):
+    """Catégorie choisie par un bouton rapide, sinon celle tapée dans le champ."""
+    return fcat(db, f.get("quick_category")) or fcat(db, f.get("category_id"))
+
+
 def fcat(db, v):
     """Champ catégorie : identifiant, ou texte « Parent › Sous-catégorie » (créée si elle n'existe pas)."""
     from ..services import resolve_category
@@ -47,7 +52,13 @@ def lookups(db):
         "persons": db.scalars(select(Person).order_by(Person.id)).all(),
         "accounts": db.scalars(select(Account).where(Account.archived.is_(False)).order_by(Account.id)).all(),
         "today": date.today(),
+        "quick": _quick(db),
     }
+
+
+def _quick(db):
+    from ..services import quick_categories
+    return quick_categories(db)
 
 
 async def save_uploads(db, form, field="files", **links) -> int:

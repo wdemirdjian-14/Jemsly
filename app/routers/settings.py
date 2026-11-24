@@ -83,7 +83,8 @@ def categories_page(request: Request, db: Session = Depends(get_db)):
                              .group_by(Transaction.category_id)).all())
     roots = db.scalars(select(Category).where(Category.parent_id.is_(None))).all()
     roots = sorted(roots, key=lambda c: c.name.lower())
-    return render(request, db, "categories.html", roots=roots, counts=counts, **lookups(db))
+    return render(request, db, "categories.html", roots=roots, counts=counts, quick_count=sum(
+        1 for c in db.scalars(select(Category).where(Category.is_quick.is_(True)))), **lookups(db))
 
 
 @router.post("/categories/new")
@@ -103,6 +104,15 @@ def category_prune(request: Request, db: Session = Depends(get_db)):
     n = prune_categories(db)
     db.commit()
     return redirect(request, "/categories", f"{n} catégorie(s) inutilisée(s) supprimée(s).")
+
+
+@router.post("/categories/{cid}/quick")
+def category_quick(cid: int, request: Request, db: Session = Depends(get_db)):
+    cat = db.get(Category, cid) or _404()
+    cat.is_quick = not cat.is_quick
+    db.commit()
+    return redirect(request, f"/categories#c{cid}",
+                    f"« {cat.path} » {'ajoutée aux' if cat.is_quick else 'retirée des'} boutons rapides.")
 
 
 @router.post("/categories/{cid}")
@@ -136,6 +146,9 @@ async def category_save(cid: int, request: Request, db: Session = Depends(get_db
     cat.parent_id = parent.id if parent else None
     v = f.get("budget", "").strip()
     cat.budget_cents = abs(fcents(v)) if v and fcents(v) is not None else None
+    cat.is_quick = bool(f.get("is_quick"))
+    if cat.parent_id is None:
+        cat.is_advance = bool(f.get("is_advance"))
     db.commit()
     return redirect(request, "/categories", "Catégorie enregistrée.")
 

@@ -52,6 +52,17 @@
   <div class="actions"><a class="btn small ghost" href="/report?month={{ month }}">📊 Bilan détaillé</a></div>
 </div>
 
+{% if advances.count %}
+<a class="card" href="/jems" style="display:block;color:inherit;border-left:4px solid var(--warn)">
+  <div style="display:flex;justify-content:space-between;gap:8px">
+    <span><b>💼 Avances de frais en cours</b><br>
+      <span class="sub">{{ advances.count }} dépense(s) non remboursée(s){% if advances.count_to_declare %} · <b style="color:var(--warn)">{{ advances.count_to_declare }} à déclarer</b>{% endif %}{% if advances.missing_receipts %} · {{ advances.missing_receipts }} sans justificatif{% endif %}</span></span>
+    <span class="amt" style="font-size:20px">{{ advances.total|money }}</span>
+  </div>
+  {% if advances.by_category|length > 1 %}<div class="sub" style="margin-top:4px">{% for n, v in advances.by_category %}{{ n }} {{ v|money }}{{ ' · ' if not loop.last }}{% endfor %}</div>{% endif %}
+</a>
+{% endif %}
+
 <!-- Budget fixe -->
 <a class="stat" href="/fixed" style="display:block;margin-bottom:12px"><div class="l">Charges fixes / mois</div>
   <div class="v">{{ fixed.total|money }}</div><div class="sub">reste {{ fixed.left|money }} sur les revenus fixes</div></a>

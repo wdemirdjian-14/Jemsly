@@ -260,6 +260,12 @@ def backfill_methods(db: Session) -> int:
 
 def apply_auto(db: Session, tx: Transaction) -> str:
     """Catégorise une opération fraîchement importée (tx doit avoir un id)."""
+    source = _apply_auto(db, tx)
+    sync_advance_scope(db, tx)
+    return source
+
+
+def _apply_auto(db: Session, tx: Transaction) -> str:
     acc = db.get(Account, tx.account_id)
     if not tx.method:
         tx.method = payment_method(tx.label, acc.kind if acc else "")
@@ -997,3 +1003,40 @@ def prune_categories(db: Session) -> int:
         db.flush()
         n += 1
     return n
+
+
+
+def sync_advance_scope(db: Session, tx: Transaction):
+    """Une dépense classée dans une catégorie « avance de frais » (ex. Jems › Restaurants) passe en note de frais."""
+    cat = db.get(Category, tx.category_id) if tx.category_id else None
+    if cat and cat.advance:
+        tx.scope = "jems"
+        if tx.amount_cents < 0 and not tx.jems_status:
+            tx.jems_status = "a_declarer"
+
+
+def quick_categories(db: Session, limit: int = 8) -> list[Category]:
+    """Boutons rapides : ceux choisis dans Catégories, sinon les catégories les plus utilisées."""
+    chosen = db.scalars(select(Category).where(Category.is_quick.is_(True))).all()
+    if chosen:
+        return sorted(chosen, key=lambda c: c.path.lower())
+    rows = db.execute(select(Transaction.category_id, func.count(Transaction.id))
+                      .where(Transaction.category_id.is_not(None), Transaction.auto_source == "manuel")
+                      .group_by(Transaction.category_id).order_by(func.count(Transaction.id).desc()).limit(limit)).all()
+    cats = [db.get(Category, cid) for cid, _ in rows]
+    return [c for c in cats if c and c.kind != "virement"]
+
+
+def advances_summary(db: Session) -> dict:
+    """Avances de frais en cours : dépenses Jems pas encore remboursées."""
+    rows = db.scalars(select(Transaction).where(Transaction.scope == "jems", Transaction.amount_cents < 0,
+                                                Transaction.jems_status.in_(["a_declarer", "declaree"]))).all()
+    by_status = {"a_declarer": 0, "declaree": 0}
+    by_cat: dict[str, int] = defaultdict(int)
+    for t in rows:
+        by_status[t.jems_status] += -t.amount_cents
+        by_cat[t.category.name if t.category else "Non classé"] += -t.amount_cents
+    return {"total": sum(by_status.values()), "count": len(rows), "to_declare": by_status["a_declarer"],
+            "declared": by_status["declaree"], "missing_receipts": sum(1 for t in rows if not t.attachments),
+            "by_category": sorted(by_cat.items(), key=lambda kv: -kv[1]),
+            "count_to_declare": sum(1 for t in rows if t.jems_status == "a_declarer")}

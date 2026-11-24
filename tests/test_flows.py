@@ -452,3 +452,37 @@ def test_standalone_invoice_matches_transaction(client, db):
     client.post("/attachments/new", data={"note": "Notice chaudière"},
                 files={"files": ("notice.pdf", b"%PDF", "application/pdf")})
     assert "Notice chaudière" in client.get("/attachments?q=chaudiere").text
+
+
+def test_quick_buttons_and_jems_advances(client, db):
+    from app.services import advances_summary, resolve_category
+    divers = resolve_category(db, "Divers")
+    jems = resolve_category(db, "Jems")
+    jems.is_advance = True
+    resto = resolve_category(db, "Jems › Restaurants")
+    db.commit()
+    # boutons rapides choisis dans Catégories (étoile)
+    client.post(f"/categories/{divers.id}/quick")
+    client.post(f"/categories/{resto.id}/quick")
+    d = date.today().strftime("%d/%m/%Y")
+    _import(client, _csv([f"{d};CB BRASSERIE DU PALAIS;-48,00", f"{d};CB PAPETERIE;-12,00"]))
+    page = client.get("/inbox").text
+    assert 'name="quick_category"' in page and "Jems › Restaurants" in page
+    b, p = sorted(db.scalars(select(Transaction)).all(), key=lambda t: t.amount_cents)
+    client.post(f"/transactions/{b.id}", data={"quick_category": str(resto.id), "scope": "perso"})
+    client.post(f"/transactions/{p.id}", data={"quick_category": str(divers.id), "scope": "perso"})
+    db.expire_all()
+    b, p = db.get(Transaction, b.id), db.get(Transaction, p.id)
+    assert b.category_id == resto.id and b.scope == "jems" and b.jems_status == "a_declarer"  # avance de frais
+    assert p.category_id == divers.id and p.scope == "perso"
+    adv = advances_summary(db)
+    assert adv["total"] == 4800 and adv["count_to_declare"] == 1 and adv["by_category"] == [("Restaurants", 4800)]
+    assert "Avances de frais en cours" in client.get("/").text
+    # la prochaine brasserie est rangée automatiquement en Jems › Restaurants (règle créée par le bouton)
+    client.post(f"/transactions/{b.id}", data={"quick_category": str(resto.id), "scope": "jems",
+                                               "make_rule": "1", "rule_pattern": "BRASSERIE DU PALAIS"})
+    _import(client, _csv([f"{d};CB BRASSERIE DU PALAIS 2;-30,00"]))
+    db.expire_all()
+    nxt = db.scalar(select(Transaction).where(Transaction.amount_cents == -3000))
+    assert nxt.category_id == resto.id and nxt.scope == "jems" and nxt.jems_status == "a_declarer"
+    assert client.get("/jems").status_code == 200 and client.get("/categories").status_code == 200

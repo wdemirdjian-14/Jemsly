@@ -30,6 +30,7 @@
     <div><label>Pour qui</label>{{ m.person_select(persons, p.person_id if p) }}</div>
   </div>
   <label>Catégorie</label>{{ m.category_select(categories, p.category_id if p) }}
+  {{ m.quick_buttons(quick, p.category_id if p) }}
   <label>Périmètre</label>{{ m.scope_seg(p.scope if p else 'famille') }}
   <label>Tags</label>
   <input name="tags" value="{{ p.tags|map(attribute='name')|join(', ') if p }}" placeholder="ex : rentrée, anniversaire" autocomplete="off">

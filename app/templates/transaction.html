@@ -25,6 +25,7 @@
   <label>Mon libellé <span class="sub">(facultatif, ex : « iPhone 16 de Laura »)</span></label>
   <input name="custom_label" value="{{ tx.custom_label }}" placeholder="{{ tx.label[:60] }}">
   <label>Catégorie</label>{{ m.category_select(categories, tx.category_id) }}
+  {{ m.quick_buttons(quick, tx.category_id) }}
   <label>Pour qui</label>{{ m.person_select(persons, tx.person_id) }}
   <label>Périmètre</label>{{ m.scope_seg(tx.scope) }}
   {{ m.jems_status(tx.jems_status) }}

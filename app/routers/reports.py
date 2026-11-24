@@ -13,7 +13,7 @@ from .. import ai
 from ..config import UPLOAD_DIR
 from ..db import get_db
 from ..models import JEMS_STATUSES, SCOPES, Category, MonthlyReport, Transaction
-from ..services import inspect_month, month_stats, provisions
+from ..services import advances_summary, inspect_month, month_stats, provisions
 from ..templating import redirect, render
 from ..utils import current_month, fmt_money, month_bounds, month_label, shift_month
 from .common import fcents
@@ -127,6 +127,7 @@ def jems(request: Request, db: Session = Depends(get_db)):
     rows = _jems_rows(db, month, status)
     totals = {k: -sum(t.amount_cents for t in _jems_rows(db, month, k) if t.amount_cents < 0) for k in JEMS_STATUSES}
     return render(request, db, "jems.html", rows=rows, month=month, status=status, totals=totals,
+                  advances=advances_summary(db),
                   total=-sum(t.amount_cents for t in rows if t.amount_cents < 0),
                   missing=sum(1 for t in rows if not t.attachments))
 

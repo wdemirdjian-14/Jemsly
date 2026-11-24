@@ -14,14 +14,14 @@ from ..models import (
     Account, Attachment, Category, InstallmentItem, InstallmentPlan, Pending, Rule, Tag, Transaction, transaction_tags,
 )
 from ..services import (
-    account_balance, add_tags, apply_auto, build_installments, fixed_charges, inspect_month, link_installments,
+    account_balance, add_tags, advances_summary, apply_auto, build_installments, fixed_charges, inspect_month, link_installments,
     link_pending, match_pending_to_existing, match_transaction_for_invoice, month_stats, pending_total,
-    plan_from_transaction, similar_uncategorized, upcoming,
+    plan_from_transaction, similar_uncategorized, sync_advance_scope, upcoming,
 )
 from ..search import SORTS, apply_search
 from ..templating import redirect, render
 from ..utils import current_month, merchant_key, month_bounds, norm
-from .common import fcat, fcents, fdate, fint, lookups, save_uploads
+from .common import fcat, fcents, fdate, fint, form_category, lookups, save_uploads
 
 router = APIRouter()
 
@@ -56,7 +56,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
     return render(request, db, "dashboard.html", month=month, balances=balances, total=total, pending=pend,
                   available=total + pend, end_of_month=total + pend + sum(e.amount_cents for e in to_month_end),
                   upcoming=next30[:6], stats=stats, alerts=alerts, spent=spent,
-                  max_spent=max([c["total"] for c in spent] or [1]), fixed=fixed)
+                  max_spent=max([c["total"] for c in spent] or [1]), fixed=fixed, advances=advances_summary(db))
 
 
 # ---------------------------------------------------------------- opérations
@@ -124,7 +124,7 @@ def transaction_detail(tx_id: int, request: Request, db: Session = Depends(get_d
 async def transaction_update(tx_id: int, request: Request, db: Session = Depends(get_db)):
     tx = db.get(Transaction, tx_id) or _404()
     f = await request.form()
-    tx.category_id = fcat(db, f.get("category_id"))
+    tx.category_id = form_category(db, f)
     tx.person_id = fint(f.get("person_id"))
     tx.scope = f.get("scope") or "famille"
     tx.jems_status = (f.get("jems_status") or "a_declarer") if tx.scope == "jems" else None
@@ -136,6 +136,7 @@ async def transaction_update(tx_id: int, request: Request, db: Session = Depends
     add_tags(db, tx, f.get("tags", ""))
     tx.categorized = tx.category_id is not None
     tx.auto_source = "manuel"
+    sync_advance_scope(db, tx)
     await save_uploads(db, f, transaction_id=tx.id)
     msg = "Opération classée."
     count = fint(f.get("installments")) or 1
@@ -152,7 +153,7 @@ async def transaction_update(tx_id: int, request: Request, db: Session = Depends
         n = 0
         for other in similar_uncategorized(db, tx):
             other.category_id, other.person_id, other.scope = tx.category_id, tx.person_id, tx.scope
-            other.jems_status = tx.jems_status
+            other.jems_status = tx.jems_status if other.amount_cents < 0 else None
             other.tags = list(tx.tags)
             other.categorized = tx.categorized
             other.auto_source = "manuel"
@@ -265,7 +266,7 @@ async def pending_save(request: Request, pid: int | None = None, db: Session = D
         first = fdate(f.get("date"), date.today())
         plan = InstallmentPlan(label=f.get("label", "").strip() or "Achat", total_cents=-cents, count=count,
                                first_date=first, merchant=f.get("keyword", "").strip(),
-                               match_pattern=f.get("keyword", "").strip(), category_id=fcat(db, f.get("category_id")),
+                               match_pattern=f.get("keyword", "").strip(), category_id=form_category(db, f),
                                person_id=fint(f.get("person_id")), scope=f.get("scope") or "famille",
                                notes=f.get("note", "").strip())
         db.add(plan)
@@ -283,7 +284,9 @@ async def pending_save(request: Request, pid: int | None = None, db: Session = D
     p.label = f.get("label", "").strip() or "Achat"
     p.amount_cents = cents
     p.keyword = f.get("keyword", "").strip()
-    p.category_id = fcat(db, f.get("category_id"))
+    p.category_id = form_category(db, f)
+    if p.category_id and db.get(Category, p.category_id).advance:
+        p.scope = "jems"
     p.person_id = fint(f.get("person_id"))
     p.scope = f.get("scope") or "famille"
     p.note = f.get("note", "").strip()
