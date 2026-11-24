@@ -495,9 +495,9 @@ def test_who_owes_me_what(client, db):
     assert contact_name_hint("Vir Inst de M Ou Mme Durand") .endswith("Durand")
     # règles : l'assurance de la voiture de maman (je paie) et son virement « assurance » (elle rembourse)
     client.post("/settings/rules", data={"pattern": "CONTRAT555", "contact": "Maman", "priority": "5"})
-    client.post("/settings/rules", data={"pattern": "DURAND GHISLAINE", "direction": "credit", "contact": "Maman"})
+    client.post("/settings/rules", data={"pattern": "DURAND MARTINE", "direction": "credit", "contact": "Maman"})
     d = date.today().strftime("%d/%m/%Y")
-    _import(client, _csv([f"{d};PRLV AXA CONTRAT555;-49,94", f"{d};VIR DURAND GHISLAINE assurance;50,00",
+    _import(client, _csv([f"{d};PRLV AXA CONTRAT555;-49,94", f"{d};VIR DURAND MARTINE assurance;50,00",
                           f"{d};Virement Wero vers Thibault Geffroy;-126,00", f"{d};CB RESTO LE PETIT;-80,00"]))
     maman = db.scalar(select(Contact).where(Contact.name == "Maman"))
     assert maman.balance == 4994 - 5000  # elle a même un peu trop remboursé
