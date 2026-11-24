@@ -999,15 +999,18 @@ def move_category(db: Session, old_name: str, new_path: str) -> bool:
     return True
 
 
-def prune_categories(db: Session) -> int:
-    """Supprime les catégories qui ne servent à rien (aucune opération, règle, charge, achat…)."""
+def prune_categories(db: Session, keep: set[int] | None = None) -> int:
+    """Supprime les catégories qui ne servent à rien (aucune opération, règle, charge, achat…), hors boutons
+    rapides, avances de frais et catégories à garder (`keep`)."""
+    keep = keep or set()
     used = set()
     for model in _category_models():
         used |= set(db.scalars(select(model.category_id).where(model.category_id.is_not(None))))
     n = 0
     for c in sorted(db.scalars(select(Category)).all(), key=lambda c: c.parent_id is None):  # enfants d'abord
         db.refresh(c)
-        if c.id in used or c.children or c.name == TRANSFER_CATEGORY or c.budget_cents:
+        if (c.id in used or c.id in keep or c.children or c.name == TRANSFER_CATEGORY or c.budget_cents
+                or c.is_quick or c.is_advance):
             continue
         db.delete(c)
         db.flush()
@@ -1147,4 +1150,6 @@ def contact_name_hint(label: str) -> str:
 def owed_summary(db: Session) -> dict:
     contacts = db.scalars(select(Contact)).all()
     rows = sorted(((c, c.balance) for c in contacts), key=lambda cb: -abs(cb[1]))
-    return {"rows": rows, "owed_to_me": sum(b for _, b in rows if b > 0), "i_owe": -sum(b for _, b in rows if b < 0)}
+    significant = [(c, b) for c, b in rows if abs(b) >= 100]  # moins d'1 € d'écart = à jour
+    return {"rows": rows, "significant": significant, "owed_to_me": sum(b for _, b in significant if b > 0),
+            "i_owe": -sum(b for _, b in significant if b < 0)}

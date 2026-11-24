@@ -516,7 +516,7 @@ def test_who_owes_me_what(client, db):
     db.expire_all()
     assert db.get(Contact, thib.id).balance == 6600
     s = owed_summary(db)
-    assert s["owed_to_me"] == 6600 and s["i_owe"] == 6
+    assert s["owed_to_me"] == 6600 and s["i_owe"] == 0  # 6 centimes = à jour
     assert "Qui me doit quoi" in client.get("/").text and client.get(f"/owed/{thib.id}").status_code == 200
     client.post(f"/owed/{thib.id}", data={"action": "settle"})
     db.expire_all()

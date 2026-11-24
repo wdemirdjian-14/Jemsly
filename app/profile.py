@@ -43,8 +43,10 @@ def apply_profile(db: Session, data: dict) -> dict:
 
     for old_name, new_path in (data.get("category_moves") or {}).items():
         move_category(db, old_name, new_path)
+    declared = set()
     for item in data.get("categories", []):
         c = resolve_category(db, item["name"], kind=item.get("kind"))
+        declared.add(c.id)
         if item.get("icon"):
             c.icon = item["icon"]
         if item.get("kind"):
@@ -165,5 +167,5 @@ def apply_profile(db: Session, data: dict) -> dict:
     db.flush()
     stats["opérations rangées"] = recategorize_all(db)
     if data.get("prune_categories"):
-        stats["catégories inutiles supprimées"] = prune_categories(db)
+        stats["catégories inutiles supprimées"] = prune_categories(db, keep=declared)
     return stats

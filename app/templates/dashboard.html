@@ -65,7 +65,7 @@
 
 {% if owed.owed_to_me or owed.i_owe %}
 <a class="card" href="/owed" style="display:flex;justify-content:space-between;color:inherit">
-  <span><b>🤝 Qui me doit quoi</b><br><span class="sub">{% for c, b in owed.rows if b %}{{ c.name }} {{ b|smoney }}{{ ' · ' if not loop.last }}{% endfor %}</span></span>
+  <span><b>🤝 Qui me doit quoi</b><br><span class="sub">{% for c, b in owed.significant %}{{ c.name }} {{ b|smoney }}{{ ' · ' if not loop.last }}{% endfor %}</span></span>
   <span class="right"><span class="amt pos">{{ owed.owed_to_me|money }}</span>{% if owed.i_owe %}<br><span class="sub">je dois {{ owed.i_owe|money }}</span>{% endif %}</span>
 </a>
 {% endif %}
